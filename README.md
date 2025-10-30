@@ -1,329 +1,224 @@
-# Any Router 多账号自动签到
+# AnyRouter / AgentRouter 自动签到
 
-多平台多账号自动签到，理论上支持所有 NewAPI、OneAPI 平台，目前内置支持 Any Router 与 Agent Router，其它可根据文档进行摸索配置。
+> 自动签到脚本，支持多账号，支持密码加密，支持 GitHub Actions 云端运行
 
-推荐搭配使用[Auo](https://github.com/millylee/auo)，支持任意 Claude Code Token 切换的工具。
+[![GitHub Actions](https://img.shields.io/badge/GitHub-Actions-2088FF?logo=github-actions&logoColor=white)](https://github.com/features/actions)
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 
-**维护开源不易，如果本项目帮助到了你，请帮忙点个 Star，谢谢!**
+---
 
-用于 Claude Code 中转站 Any Router 网站多账号每日签到，一次 $25，限时注册即送 100 美金，[点击这里注册](https://anyrouter.top/register?aff=gSsN)。业界良心，支持 Claude Sonnet 4.5、GPT-5-Codex、Claude Code 百万上下文（使用 `/model sonnet[1m]` 开启），`gemini-2.5-pro` 模型。
+## ✨ 特性
 
-## 功能特性
+- ✅ **多账号支持** - 支持同时管理多个账号
+- ✅ **密码加密存储** - 使用 Fernet 加密保护敏感信息
+- ✅ **自动签到** - GitHub Actions 定时自动执行
+- ✅ **多平台支持** - AgentRouter 和 AnyRouter
+- ✅ **通知推送** - 支持微信、邮件等多种通知方式
 
-- ✅ 多平台（兼容 NewAPI 与 OneAPI）
-- ✅ 单个/多账号自动签到
-- ✅ 多种机器人通知（可选）
-- ✅ 绕过 WAF 限制
+---
 
-## 使用方法
+## 🚀 快速开始（5分钟配置）
 
-### 1. Fork 本仓库
+### 方式 1：GitHub Actions（推荐 - 全自动）
 
-点击右上角的 "Fork" 按钮，将本仓库 fork 到你的账户。
+#### Step 1: Fork/上传代码到 GitHub
 
-### 2. 获取账号信息
+1. 创建私有仓库：https://github.com/new
+2. 上传代码（使用 `git_push.bat`）
 
-对于每个需要签到的账号，你需要获取：
-1. **Cookies**: 用于身份验证
-2. **API User**: 用于请求头的 new-api-user 参数（自己配置其它平台时该值需要注意匹配）
+#### Step 2: 配置 Secrets
 
-#### 获取 Cookies：
-1. 打开浏览器，访问 https://anyrouter.top/
-2. 登录你的账户
-3. 打开开发者工具 (F12)
-4. 切换到 "Application" 或 "存储" 选项卡
-5. 找到 "Cookies" 选项
-6. 复制所有 cookies
+访问：`https://github.com/你的用户名/仓库名/settings/secrets/actions`
 
-#### 获取 API User：
-通常在网站的用户设置或 API 设置中可以找到，每个账号都有唯一的标识。
+添加 2 个 Secrets：
 
-### 3. 设置 GitHub Environment Secret
+**Secret 1: ANYROUTER_ACCOUNTS**
+```bash
+# 运行转换工具生成配置
+python convert_config.py
 
-1. 在你 fork 的仓库中，点击 "Settings" 选项卡
-2. 在左侧菜单中找到 "Environments" -> "New environment"
-3. 新建一个名为 `production` 的环境
-4. 点击新建的 `production` 环境进入环境配置页
-5. 点击 "Add environment secret" 创建 secret：
-   - Name: `ANYROUTER_ACCOUNTS`
-   - Value: 你的多账号配置数据
-
-### 4. 多账号配置格式
-
-支持单个与多个账号配置，可选 `name` 和 `provider` 字段：
-
-```json
-[
-  {
-    "name": "我的主账号",
-    "cookies": {
-      "session": "account1_session_value"
-    },
-    "api_user": "account1_api_user_id"
-  },
-  {
-    "name": "备用账号",
-    "provider": "agentrouter",
-    "cookies": {
-      "session": "account2_session_value"
-    },
-    "api_user": "account2_api_user_id"
-  }
-]
+# 复制 github_actions_config.json 的内容
+# 粘贴到 GitHub Secrets
 ```
 
-**字段说明**：
-- `cookies` (必需)：用于身份验证的 cookies 数据
-- `api_user` (必需)：用于请求头的 new-api-user 参数
-- `provider` (可选)：指定使用的服务商，默认为 `anyrouter`
-- `name` (可选)：自定义账号显示名称，用于通知和日志中标识账号
-
-**默认值说明**：
-- 如果未提供 `provider` 字段，默认使用 `anyrouter`（向后兼容）
-- 如果未提供 `name` 字段，会使用 `Account 1`、`Account 2` 等默认名称
-- `anyrouter` 与 `agentrouter` 配置已内置，无需填写
-
-接下来获取 cookies 与 api_user 的值。
-
-通过 F12 工具，切到 Application 面板，拿到 session 的值，最好重新登录下，该值 1 个月有效期，但有可能提前失效，失效后报 401 错误，到时请再重新获取。
-
-![获取 cookies](./assets/request-session.png)
-
-通过 F12 工具，切到 Network 面板，可以过滤下，只要 Fetch/XHR，找到带 `New-Api-User`，这个值正常是 5 位数，如果是负数或者个位数，正常是未登录。
-
-![获取 api_user](./assets/request-api-user.png)
-
-### 5. 启用 GitHub Actions
-
-1. 在你的仓库中，点击 "Actions" 选项卡
-2. 如果提示启用 Actions，请点击启用
-3. 找到 "AnyRouter 自动签到" workflow
-4. 点击 "Enable workflow"
-
-### 6. 测试运行
-
-你可以手动触发一次签到来测试：
-
-1. 在 "Actions" 选项卡中，点击 "AnyRouter 自动签到"
-2. 点击 "Run workflow" 按钮
-3. 确认运行
-
-![运行结果](./assets/check-in.png)
-
-## 执行时间
-
-- 脚本每6小时执行一次（1. action 无法准确触发，基本延时 1~1.5h；2. 目前观测到 anyrouter 的签到是每 24h 而不是零点就可签到）
-- 你也可以随时手动触发签到
-
-## 注意事项
-
-- 请确保每个账号的 cookies 和 API User 都是正确的
-- 可以在 Actions 页面查看详细的运行日志
-- 支持部分账号失败，只要有账号成功签到，整个任务就不会失败
-- 报 401 错误，请重新获取 cookies，理论 1 个月失效，但有 Bug，详见 [#6](https://github.com/millylee/anyrouter-check-in/issues/6)
-- 请求 200，但出现 Error 1040（08004）：Too many connections，官方数据库问题，目前已修复，但遇到几次了，详见 [#7](https://github.com/millylee/anyrouter-check-in/issues/7)
-
-## 配置示例
-
-### 基础配置（向后兼容）
-
-假设你有两个账号需要签到，不指定 provider 时默认使用 anyrouter：
-
-```json
-[
-  {
-    "cookies": {
-      "session": "abc123session"
-    },
-    "api_user": "user123"
-  },
-  {
-    "cookies": {
-      "session": "xyz789session"
-    },
-    "api_user": "user456"
-  }
-]
+**Secret 2: ENCRYPTION_KEY**
+```
+Q94uwxjIRzf40zSpyBM3mczOhid4JmoGRM1hylSzJJM=
 ```
 
-### 多服务商配置
+#### Step 3: 手动触发测试
 
-如果你需要同时使用多个服务商（如 anyrouter 和 agentrouter）：
+1. 进入 Actions 页面
+2. 选择 "AnyRouter 自动签到"
+3. 点击 "Run workflow"
+4. 等待 5 分钟，查看结果
 
-```json
-[
-  {
-    "name": "AnyRouter 主账号",
-    "provider": "anyrouter",
-    "cookies": {
-      "session": "abc123session"
-    },
-    "api_user": "user123"
-  },
-  {
-    "name": "AgentRouter 备用",
-    "provider": "agentrouter",
-    "cookies": {
-      "session": "xyz789session"
-    },
-    "api_user": "user456"
-  }
-]
-```
+✅ **完成！** 现在每 6 小时自动签到一次
 
-## 自定义 Provider 配置（可选）
+---
 
-默认情况下，`anyrouter`、`agentrouter` 已内置配置，无需额外设置。如果你需要使用其他服务商，可以通过环境变量 `PROVIDERS` 配置：
+### 方式 2：本地运行
 
-### 基础配置（仅域名）
-
-大多数情况下，只需提供 `domain` 即可，其他路径会自动使用默认值：
-
-```json
-{
-  "customrouter": {
-    "domain": "https://custom.example.com"
-  }
-}
-```
-
-### 完整配置（自定义路径）
-
-如果服务商使用了不同的 API 路径、请求头或需要 WAF 绕过，可以额外指定：
-
-```json
-{
-  "customrouter": {
-    "domain": "https://custom.example.com",
-    "login_path": "/auth/login",
-    "sign_in_path": "/api/checkin",
-    "user_info_path": "/api/profile",
-    "api_user_key": "New-Api-User",
-    "bypass_method": "waf_cookies"
-  }
-}
-```
-
-**关于 `bypass_method`**：
-- 不设置或设置为 `null`：直接使用用户提供的 cookies 进行请求（适合无 WAF 保护的网站）
-- 设置为 `"waf_cookies"`：使用 Playwright 打开浏览器获取 WAF cookies 后再进行请求（适合有 WAF 保护的网站）
-
-> 注：`anyrouter` 和 `agentrouter` 已内置默认配置，无需在 `PROVIDERS` 中配置
-
-### 在 GitHub Actions 中配置
-
-1. 进入你的仓库 Settings -> Environments -> production
-2. 添加新的 secret：
-   - Name: `PROVIDERS`
-   - Value: 你的 provider 配置（JSON 格式）
-
-**字段说明**：
-- `domain` (必需)：服务商的域名
-- `login_path` (可选)：登录页面路径，默认为 `/login`（仅在 `bypass_method` 为 `"waf_cookies"` 时使用）
-- `sign_in_path` (可选)：签到 API 路径，默认为 `/api/user/sign_in`
-- `user_info_path` (可选)：用户信息 API 路径，默认为 `/api/user/self`
-- `api_user_key` (可选)：API 用户标识请求头名称，默认为 `new-api-user`
-- `bypass_method` (可选)：WAF 绕过方法
-  - `"waf_cookies"`：使用 Playwright 打开浏览器获取 WAF cookies 后再执行签到
-  - 不设置或 `null`：直接使用用户 cookies 执行签到（适合无 WAF 保护的网站）
-
-**配置示例**（完整）：
-```json
-{
-  "customrouter": {
-    "domain": "https://custom.example.com",
-    "login_path": "/auth/login",
-    "sign_in_path": "/api/checkin",
-    "user_info_path": "/api/profile",
-    "api_user_key": "x-user-id",
-    "bypass_method": "waf_cookies"
-  }
-}
-```
-
-**内置配置说明**：
-- `anyrouter`：
-  - `bypass_method: "waf_cookies"`（需要先获取 WAF cookies，然后执行签到）
-  - `sign_in_path: "/api/user/sign_in"`
-- `agentrouter`：
-  - `bypass_method: null`（直接使用用户 cookies 执行签到）
-  - `sign_in_path: "/api/user/sign_in"`
-
-**重要提示**：
-- `PROVIDERS` 是可选的，不配置则使用内置的 `anyrouter` 和 `agentrouter`
-- 自定义的 provider 配置会覆盖同名的默认配置
-
-## 开启通知
-
-脚本支持多种通知方式，可以通过配置以下环境变量开启，如果 `webhook` 有要求安全设置，例如钉钉，可以在新建机器人时选择自定义关键词，填写 `AnyRouter`。
-
-### 邮箱通知
-- `EMAIL_USER`: 发件人邮箱地址
-- `EMAIL_PASS`: 发件人邮箱密码/授权码
-- `CUSTOM_SMTP_SERVER`: 自定义发件人SMTP服务器(可选)
-- `EMAIL_TO`: 收件人邮箱地址
-### 钉钉机器人
-- `DINGDING_WEBHOOK`: 钉钉机器人的 Webhook 地址
-
-### 飞书机器人
-- `FEISHU_WEBHOOK`: 飞书机器人的 Webhook 地址
-
-### 企业微信机器人
-- `WEIXIN_WEBHOOK`: 企业微信机器人的 Webhook 地址
-
-### PushPlus 推送
-- `PUSHPLUS_TOKEN`: PushPlus 的 Token
-
-### Server酱
-- `SERVERPUSHKEY`: Server酱的 SendKey
-
-配置步骤：
-1. 在仓库的 Settings -> Environments -> production -> Environment secrets 中添加上述环境变量
-2. 每个通知方式都是独立的，可以只配置你需要的推送方式
-3. 如果某个通知方式配置不正确或未配置，脚本会自动跳过该通知方式
-
-## 故障排除
-
-如果签到失败，请检查：
-
-1. 账号配置格式是否正确
-2. cookies 是否过期
-3. API User 是否正确
-4. 网站是否更改了签到接口
-5. 查看 Actions 运行日志获取详细错误信息
-
-## 本地开发环境设置
-
-如果你需要在本地测试或开发，请按照以下步骤设置：
+#### 1. 安装依赖
 
 ```bash
-# 安装所有依赖
-uv sync --dev
-
-# 安装 Playwright 浏览器
-uv run playwright install chromium
-
-# 创建 .env 文件并配置（注意：JSON 必须是单行格式）
-# 示例：
-# ANYROUTER_ACCOUNTS=[{"name":"账号1","cookies":{"session":"xxx"},"api_user":"12345"}]
-# PROVIDERS={"agentrouter":{"domain":"https://agentrouter.org"}}
-
-# 运行签到脚本
-uv run checkin.py
+pip install -r requirements.txt
+playwright install chromium
 ```
 
-## 测试
+#### 2. 配置账号
+
+编辑 `test_multi_accounts.py`，配置你的账号信息。
+
+#### 3. 运行签到
 
 ```bash
-uv sync --dev
-
-# 安装 Playwright 浏览器
-uv run playwright install chromium
-
-# 运行测试
-uv run pytest tests/
+python test_multi_accounts.py
 ```
 
-## 免责声明
+---
 
-本脚本仅用于学习和研究目的，使用前请确保遵守相关网站的使用条款.
+## 📝 账号配置
+
+### 配置格式
+
+```python
+{
+    "name": "账号名称",
+    "provider": "agentrouter",  # 或 "anyrouter"
+    "linuxdo_username": "linuxdo_12345",
+    "encrypted_password": "加密后的密码",
+    "cookies": {
+        "session": "你的 session cookie"
+    },
+    "api_user": "12345"
+}
+```
+
+### 获取配置信息
+
+#### 1. 获取 Session Cookie
+
+1. 登录 AgentRouter/AnyRouter
+2. 按 F12 打开开发者工具
+3. 访问任意 API 接口
+4. 找到 Request Headers 中的 `Cookie`
+5. 复制 `session=` 后面的值
+
+#### 2. 获取 API User
+
+在 Request Headers 中找到：
+- AgentRouter: `new-api-user`
+- AnyRouter: `x-api-user`
+
+#### 3. 加密密码
+
+```bash
+python encrypt_password.py
+# 输入密码，获得加密字符串
+```
+
+---
+
+## 🔔 配置通知（可选）
+
+### Server酱（推荐）
+
+1. 访问：https://sct.ftqq.com/
+2. 微信扫码登录获取 SendKey
+3. 添加 GitHub Secret：
+   - Name: `SERVERPUSHKEY`
+   - Value: 你的 SendKey
+
+### 其他通知方式
+
+支持：PushPlus、邮件、钉钉、飞书、企业微信
+
+详见：[通知配置文档](./docs/notifications.md)
+
+---
+
+## 🕒 定时任务
+
+当前配置：**每 6 小时执行一次**（0点、6点、12点、18点）
+
+修改定时：编辑 `.github/workflows/checkin.yml`
+
+```yaml
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # 每6小时
+    # - cron: '0 0 * * *'   # 每天0点
+    # - cron: '0 8 * * *'   # 每天8点
+```
+
+---
+
+## ❓ 常见问题
+
+### Q: Session 会过期吗？
+
+A: 会的，通常 30 天。但每天自动签到可以保持活跃，基本不会过期。
+
+### Q: 如何更新 Session？
+
+A: 重新获取 Session Cookie，更新 GitHub Secret 中的 `ANYROUTER_ACCOUNTS`。
+
+### Q: GitHub Actions 免费吗？
+
+A: 是的！每月 2000 分钟免费额度，签到只需 2-3 分钟/次，完全够用。
+
+### Q: 如何查看运行历史？
+
+A: 访问仓库的 Actions 页面，可以看到所有运行记录和日志。
+
+---
+
+## 📂 项目结构
+
+```
+.
+├── checkin.py              # 主签到脚本
+├── test_multi_accounts.py  # 本地测试配置
+├── encrypt_password.py     # 密码加密工具
+├── convert_config.py       # 配置转换工具
+├── .github/workflows/      # GitHub Actions 配置
+│   └── checkin.yml
+├── utils/                  # 工具模块
+│   ├── config.py
+│   └── notify.py
+└── docs/                   # 详细文档
+```
+
+---
+
+## 🛡️ 安全说明
+
+- ✅ 密码使用 Fernet 加密存储
+- ✅ GitHub Secrets 加密保护
+- ✅ 使用私有仓库保护隐私
+- ✅ `.gitignore` 防止敏感文件泄露
+
+---
+
+## 📄 License
+
+MIT License
+
+---
+
+## 🙏 致谢
+
+- [Playwright](https://playwright.dev/) - 浏览器自动化
+- [httpx](https://www.python-httpx.org/) - HTTP 客户端
+- [cryptography](https://cryptography.io/) - 加密库
+
+---
+
+## 📮 联系
+
+有问题？提交 [Issue](https://github.com/你的用户名/仓库名/issues)
+
+---
+
+**⭐ 觉得有用？给个 Star 吧！**
