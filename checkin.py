@@ -16,9 +16,7 @@ from dotenv import load_dotenv
 from playwright.async_api import async_playwright
 
 # 禁用SSL警告
-warnings.filterwarnings('ignore', message='Unverified HTTPS request')
-import urllib3
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+warnings.filterwarnings('ignore')
 
 from utils.config import AccountConfig, AppConfig, load_accounts_config
 from utils.notify import notify
