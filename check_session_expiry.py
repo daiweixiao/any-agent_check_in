@@ -8,6 +8,7 @@ Session 过期检测脚本
 import requests
 import json
 import sys
+import os
 from datetime import datetime
 
 def check_account_session(account):
@@ -85,15 +86,20 @@ def main():
     print(f"📅 检查时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 70)
     print()
-    
-    # 从环境变量读取账号配置
-    accounts_json = sys.argv[1] if len(sys.argv) > 1 else None
-    
+
+    # 从环境变量或命令行参数读取账号配置
+    accounts_json = os.environ.get('ANYROUTER_ACCOUNTS')
+
+    # 如果环境变量不存在，尝试从命令行参数读取
+    if not accounts_json and len(sys.argv) > 1:
+        accounts_json = sys.argv[1]
+
     if not accounts_json:
         print("❌ 错误: 请提供账号配置 JSON")
         print("用法: python check_session_expiry.py '<ACCOUNTS_JSON>'")
+        print("或设置环境变量: ANYROUTER_ACCOUNTS")
         sys.exit(1)
-    
+
     try:
         accounts = json.loads(accounts_json)
     except json.JSONDecodeError as e:

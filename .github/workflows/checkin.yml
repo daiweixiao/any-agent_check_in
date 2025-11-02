@@ -4,10 +4,12 @@ on:
     - cron: '0 0 * * *'  # 每天 UTC 0点 (北京时间 8:00)
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   checkin:
-    runs-on: windows-2025
-    environment: production
+    runs-on: windows-latest
     env:
       PYTHONIOENCODING: utf-8
     steps:
