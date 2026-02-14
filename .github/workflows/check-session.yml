@@ -1,0 +1,81 @@
+name: 检查 Session 有效性
+
+on:
+  schedule:
+    # 每天北京时间 9:00 检查一次（UTC 1:00）
+    - cron: '0 1 * * *'
+  workflow_dispatch:  # 允许手动触发
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-session:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout 代码
+        uses: actions/checkout@v4
+      
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: 安装依赖
+        run: |
+          pip install requests
+      
+      - name: 检查 Session 有效性
+        id: check-session
+        continue-on-error: true
+        env:
+          ANYROUTER_ACCOUNTS: ${{ secrets.ANYROUTER_ACCOUNTS }}
+        run: |
+          python check_session_expiry.py
+
+      - name: 创建 Issue 通知（如果检查失败）
+        if: steps.check-session.outcome == 'failure'
+        uses: actions/github-script@v7
+        continue-on-error: true
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '⚠️ Session 即将过期提醒',
+              body: `## 检查时间
+              ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}
+
+              ## ⚠️ 警告
+              部分账号的 Session 已过期或即将过期！
+
+              ## 🔧 处理方法
+              1. 访问以下网站重新登录：
+                 - AgentRouter: https://agentrouter.org/oauth
+                 - AnyRouter: https://anyrouter.top/oauth
+
+              2. 使用 F12 获取新的 session cookie
+
+              3. 更新 GitHub Secrets 中的 ANYROUTER_ACCOUNTS
+
+              ## 📋 详细日志
+              请查看 Actions 运行日志获取详细信息。
+              `,
+              labels: ['session-expiry', 'notification']
+            })
+
+      - name: 显示检查结果
+        if: always()
+        run: |
+          if [ "${{ steps.check-session.outcome }}" == "failure" ]; then
+            echo "⚠️ Session 检查失败！请查看上面的日志了解详情。"
+            echo ""
+            echo "🔧 处理方法："
+            echo "1. 访问 https://agentrouter.org/oauth 或 https://anyrouter.top/oauth 重新登录"
+            echo "2. 使用 F12 获取新的 session cookie"
+            echo "3. 更新 GitHub Secrets 中的 ANYROUTER_ACCOUNTS"
+          else
+            echo "✅ 所有账号 Session 均有效！"
+          fi

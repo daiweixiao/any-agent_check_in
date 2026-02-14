@@ -1,0 +1,38 @@
+.claude
+.env
+.venv
+__pycache__
+.pytest_cache
+.ruff_cache
+balance_hash.txt
+
+# GitHub Actions 配置（包含敏感信息）
+github_actions_config.json
+
+# 加密密钥（重要！）
+.encryption_key
+
+# 测试配置文件（包含账号信息）
+test_multi_accounts.py
+
+# 账号配置文件
+accounts_config.json
+
+# 临时文件
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.log
+.playwright-mcp/
+nul
+
+# 运行时生成的数据
+checkin_results.json
+recheck_results.json
+site_probe_results.json
+sessions_cache.json
+update_sessions.json
+generated_sites_config.txt
+session_fail_debug.png
+logs/
