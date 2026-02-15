@@ -5,7 +5,7 @@
 - [一、系统总览](#一系统总览)
 - [二、网站防护机制详解](#二网站防护机制详解)
 - [三、破解方案详解](#三破解方案详解)
-- [四、脚本使用指南](#四脚本使用指南)（含 4.5 probe_sites.py、4.6 脚本架构对比）
+- [四、脚本使用指南](#四脚本使用指南)（含 4.4 probe_sites.py、4.5 脚本架构对比）
 - [五、完整工作流程](#五完整工作流程)
 - [六、多站点签到系统](#六多站点签到系统)
 - [七、问题排查手册](#七问题排查手册)
@@ -21,7 +21,7 @@
 | 平台 | 域名 | 用途 | 防护 | 签到方式 |
 |------|------|------|------|----------|
 | **AnyRouter** | `anyrouter.top` | AI API 聚合平台 | 阿里云 WAF + Cloudflare | 查询自动签到 |
-| **AgentRouter** | `agentrouter.org` | AI API 聚合平台 | 无 WAF | 查询自动签到 |
+| **AgentRouter** | `agentrouter.org` | AI API 聚合平台 | 阿里云滑动验证 | 查询自动签到 |
 | **Einzieg API** | `api.einzieg.site` | AI API 公益站 | 无 WAF | POST /api/user/checkin |
 | **摸鱼公益** | `clove.cc.cd` | AI API 公益站 | 无 WAF | POST /api/user/checkin |
 | **老魔公益站** | `api.2020111.xyz` | AI API 公益站 | 无 WAF | POST /api/user/checkin |
@@ -38,15 +38,12 @@
 
 ```
 签到类:
-  auto_checkin.py         -- AnyRouter/AgentRouter 每日签到（本地用，httpx + Node.js WAF）
   checkin.py              -- 每日签到（GitHub Actions 用，Playwright WAF + 通知 + 余额监控）
-  multi_site_checkin.py   -- 多站点自动登录 + 签到（27 站点 x 4 账号，浏览器 OAuth）
-
-Session 管理:
-  auto_refresh_chrome.py  -- AnyRouter/AgentRouter Session 自动刷新（真实 Chrome + OAuth）
+  multi_site_checkin.py   -- 多站点自动登录 + 签到（27 站点 x 4 账号 + AnyRouter/AgentRouter）
+                             含 Session 自动刷新（浏览器 OAuth）、WAF 解析（Node.js）
 
 工具类:
-  solve_waf.js            -- WAF acw_sc__v2 cookie 求解器（Node.js，被 auto_checkin.py 调用）
+  solve_waf.js            -- WAF acw_sc__v2 cookie 求解器（Node.js，被 multi_site_checkin.py 调用）
   probe_sites.py          -- 批量站点探测（检查 /api/status，判断 new-api/签到/OAuth）
 
 配置层:
@@ -54,38 +51,16 @@ Session 管理:
   utils/notify.py         -- 通知模块（Server酱/PushPlus/邮件/钉钉/飞书/企业微信）
 
 数据文件:
-  sites.json              -- 站点配置（人工维护：添加/删除/跳过站点）
+  sites.json              -- 站点配置（人工维护：添加/删除/跳过站点，含 AnyRouter/AgentRouter）
   site_info.json          -- 运行数据（程序唯一执行数据源：session/签到状态/探测结果）
+  update_sessions.json    -- AnyRouter/AgentRouter 账号 session（由 multi_site_checkin.py 回写）
 ```
+
+> `auto_checkin.py` 和 `auto_refresh_chrome.py` 已删除，其功能（httpx 签到、WAF 解析、浏览器 OAuth 刷新）已整合到 `multi_site_checkin.py` 的 `process_external_sites()` 中。
 
 ### 1.3 整体流程
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│            AnyRouter/AgentRouter 日常签到                      │
-│                                                              │
-│  auto_checkin.py                                             │
-│    ├── 读取 update_sessions.json 中的 session                 │
-│    ├── [AnyRouter] solve_waf.js 获取 WAF cookies              │
-│    ├── 携带 session + WAF cookies 调用签到 API                 │
-│    └── 输出签到结果                                            │
-└──────────────────────────────────────────────────────────────┘
-
-┌──────────────────────────────────────────────────────────────┐
-│            AnyRouter/AgentRouter Session 过期刷新              │
-│                                                              │
-│  auto_refresh_chrome.py                                      │
-│    ├── 启动 Chrome（临时 profile + CDP 9222 端口）              │
-│    ├── Playwright 连接 Chrome                                 │
-│    ├── 登录 LinuxDO（CSRF API 方式，绕过 Cloudflare）           │
-│    ├── 浏览器访问平台首页（建立 WAF session）                    │
-│    ├── 浏览器内获取 OAuth state                                │
-│    ├── 导航到 OAuth 授权页面                                    │
-│    ├── 自动点击"允许"                                          │
-│    ├── SPA 自动交换 code -> session cookie                     │
-│    └── 保存新 session 到 update_sessions.json                  │
-└──────────────────────────────────────────────────────────────┘
-
 ┌──────────────────────────────────────────────────────────────┐
 │            多站点登录 + 签到（27 站点 x 4 账号）                  │
 │                                                              │
@@ -103,7 +78,20 @@ Session 管理:
 │    │   │   ├── 携带 New-Api-User 头部调用签到 API                │
 │    │   │   └── 更新 site_info.json（session/签到状态）           │
 │    │   └── 汇总报告（成功/失败/跳过分组）                         │
-│    └── 保存 site_info.json + checkin_results.json              │
+│    ├── 保存 site_info.json + checkin_results.json              │
+│    │                                                          │
+│    └── process_external_sites() — AnyRouter/AgentRouter 签到   │
+│        ├── Phase 1: httpx 直连签到                              │
+│        │   ├── 读取 update_sessions.json 中的 session           │
+│        │   ├── [AnyRouter] solve_waf.js 获取 WAF cookies        │
+│        │   ├── 携带 session + WAF cookies 调用签到 API           │
+│        │   └── [AgentRouter] no_auto_refresh → 过期只报错不刷新  │
+│        └── Phase 2: 浏览器 OAuth 刷新过期 session                │
+│            ├── 按 LinuxDO 凭据分组（同一凭据只登录一次）           │
+│            ├── 启动 Chrome + 登录 LinuxDO                       │
+│            ├── 逐账号: 获取 state → OAuth → 新 session           │
+│            ├── 回写 update_sessions.json                        │
+│            └── 用新 session 签到                                 │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -129,9 +117,9 @@ AnyRouter 是一个 AI API 聚合平台，前端是 Vue/React SPA 单页应用�
                 anyrouter.top/api/status        → 平台状态 + OAuth Client ID
 ```
 
-#### 拦截方式：阿里云 WAF（3 层 Cookie 验证）
+#### 拦截方式：阿里云 WAF acw_sc__v2 JS 挑战（3 层 Cookie 验证）
 
-AnyRouter 使用阿里云 Web 应用防火墙。**每一个 HTTP 请求**都必须携带 3 个 WAF cookie 才能到达后端，否则被拦截。
+AnyRouter 使用阿里云 Web 应用防火墙的 **acw_sc__v2 JS 挑战**（区别于 AgentRouter 的阿里云滑动验证）。**每一个 HTTP 请求**都必须携带 3 个 WAF cookie 才能到达后端，否则被拦截。这种 JS 挑战可以用 Node.js 模拟执行来解决。
 
 **实际抓包 - 第一次请求（无 cookie）**：
 ```http
@@ -250,9 +238,11 @@ AgentRouter 与 AnyRouter 是姊妹站，API 结构完全一致，但**没有 WA
                 agentrouter.org/api/oauth/linuxdo → OAuth code 交换
 ```
 
-#### 拦截方式：无 WAF，仅 Session 验证
+#### 拦截方式：阿里云滑动验证 + Session 验证
 
-**实际抓包 - 直接请求（无 WAF）**：
+AgentRouter 使用阿里云滑动验证码（非 acw_sc__v2 JS 挑战），需要用户拖动滑块完成验证。这种验证方式 headless 浏览器无法自动通过，因此在 `sites.json` 中标记 `no_auto_refresh: true`，session 过期时只报错不自动刷新。
+
+**实际抓包 - 直接 API 请求（滑动验证不影响 API 调用，仅影响登录/OAuth 流程）**：
 ```http
 GET https://agentrouter.org/api/user/self HTTP/1.1
 Cookie: session=MTc3MDk2MjA5OH...
@@ -269,9 +259,9 @@ Content-Type: application/json
 
 #### 我们的处理方式
 
-- 签到：直接 `httpx.get()` + `session` cookie，零额外操作
-- Session 刷新：浏览器完成 OAuth 后，SPA 直接调用 API 交换 code，session cookie 自动设置
-- 没有 WAF 的干扰，AgentRouter 的自动化最为简单
+- 签到：直接 `httpx.get()` + `session` cookie，零额外操作（滑动验证不影响 API 调用）
+- Session 刷新：**无法自动化**。阿里云滑动验证需要人工操作，headless 浏览器无法通过。`sites.json` 中标记 `no_auto_refresh: true`，`process_external_sites()` 检测到此标记后跳过自动刷新，仅输出警告
+- 当 session 过期时，需要手动在浏览器中完成 OAuth 登录，更新 `update_sessions.json`
 
 ---
 
@@ -513,7 +503,7 @@ eval(scriptContent);
 
 **使用方式**：
 ```bash
-# 自动流程（auto_checkin.py 内部调用）:
+# 自动流程（multi_site_checkin.py 内部调用）:
 # 1. httpx 请求获取 WAF 挑战页面 HTML
 # 2. 提取 <script> 标签内容
 # 3. 写入临时 .js 文件
@@ -621,140 +611,80 @@ Step C: 单次 AJAX 完成登录（关键！）
 
 ## 四、脚本使用指南
 
-### 4.1 auto_refresh_chrome.py - Session 自动刷新
+### 4.1 AnyRouter/AgentRouter 签到与 Session 刷新（已整合到 multi_site_checkin.py）
 
-**用途**：当 AnyRouter/AgentRouter session 过期时，自动通过 LinuxDO OAuth 获取新 session
-
-**前提条件**：
-- Windows 系统 + Google Chrome 浏览器
-- Node.js（用于 WAF 解析）
-- Python 依赖：`httpx`, `playwright`
-- `update_sessions.json` 配置文件
+> `auto_refresh_chrome.py` 和 `auto_checkin.py` 已删除。其功能由 `multi_site_checkin.py` 的 `process_external_sites()` 统一处理。
 
 **运行**：
 ```bash
-python auto_refresh_chrome.py
+python multi_site_checkin.py
+# 会自动处理 new-api 公益站 + AnyRouter/AgentRouter
 ```
 
-**配置**：编辑脚本中的 `LINUXDO_CREDENTIALS` 字典：
-```python
-LINUXDO_CREDENTIALS = {
-    '你的邮箱@qq.com': {
-        'login': '你的邮箱@qq.com',
-        'password': '你的密码'
-    },
-    # 支持多个 LinuxDO 账号
-    '另一个邮箱@gmail.com': {
-        'login': '另一个邮箱@gmail.com',
-        'password': '另一个密码'
-    },
-}
+**process_external_sites() 两阶段流程**：
+
 ```
+Phase 1: httpx 直连签到
+  ├── 读取 update_sessions.json 中的 session
+  ├── [AnyRouter] get_waf_cookies() → solve_waf.js 获取 WAF cookies
+  ├── 携带 session + WAF cookies 调用签到 API
+  ├── [AgentRouter] 直接用 session 调用 API（无需 WAF）
+  └── session 过期 → 检查 no_auto_refresh 标记
+      ├── no_auto_refresh=true → 报错跳过（AgentRouter 阿里云滑动验证）
+      └── no_auto_refresh=false → 加入 Phase 2 待刷新列表
 
-**匹配规则**：脚本通过账号名称中是否包含邮箱来匹配凭据。例如：
-- 账号名 `linuxdo_87247_ZHnagsan_2621097668@qq.com_AnyRouter` 包含 `2621097668@qq.com`
-- 自动匹配到 `LINUXDO_CREDENTIALS['2621097668@qq.com']`
-
-**工作流程**：
+Phase 2: 浏览器 OAuth 刷新（仅 session 过期且可自动刷新的账号）
+  ├── 按 LinuxDO 凭据分组（同一邮箱的账号共享一个 Chrome 实例）
+  ├── 每组: 启动 Chrome → 登录 LinuxDO（只登录一次）
+  ├── 逐账号: 浏览器导航获取 state → OAuth 授权 → 获取新 session
+  ├── 回写 update_sessions.json（save_external_session）
+  └── 用新 session 立即签到
 ```
-1. 读取 update_sessions.json
-2. 逐个检查账号 session 是否有效
-3. 将过期账号按 LinuxDO 凭据分组
-4. 每组只启动一个 Chrome 实例，只登录一次
-5. 在同一个浏览器会话中为该组所有账号刷新 session
-6. 每个 session 获取后立即保存到文件
-```
-
-### 4.2 auto_checkin.py - 每日自动签到
-
-**用途**：携带有效 session 执行每日签到（本地使用，同步 httpx + Node.js WAF）
-
-**运行**：
-```bash
-python auto_checkin.py
-```
-
-**配置来源**（按优先级）：
-1. 环境变量 `ANYROUTER_ACCOUNTS`（JSON 字符串）
-2. 文件 `accounts.json`
-3. 文件 `update_sessions.json`
-4. 文件 `test_config.json`
-
-> 为什么有 4 个备选文件：`accounts.json` 是标准配置，`update_sessions.json` 是 auto_refresh_chrome.py 刷新后的输出，`test_config.json` 是开发测试用。环境变量优先级最高，用于 CI 环境。
 
 **WAF 处理方式**：使用 httpx 获取挑战页面 + Node.js 解析（不依赖浏览器）
 
 ```
-1. httpx.get(domain) → 获取 acw_tc + cdn_sec_tc（Set-Cookie 自动获取）
-                      → 获取 HTML 中的 <script> 内容
-2. 从 HTML 中提取 WAF 挑战脚本（检测标志：'<script>' + 'arg1=' 存在）
-   arg1 是阿里云 WAF 挑战脚本的固定特征变量名
+1. httpx.get(domain/api/user/self) → 获取 acw_tc + cdn_sec_tc（Set-Cookie 自动获取）
+                                    → 获取 HTML 中的 <script> 内容
+2. 从 HTML 中提取 WAF 挑战脚本（检测标志：'<script>' + arg1= 存在）
 3. subprocess 调用 node solve_waf.js（Python 侧 timeout=10s，JS 侧 timeout=5s）
 4. 解析输出 JSON 获取 acw_sc__v2
 ```
 
-> 与 checkin.py 的 WAF 处理不同：auto_checkin.py 用 Node.js 执行 WAF 脚本，不需要启动浏览器。详见 [4.6 脚本架构对比](#46-脚本架构对比)。
+**凭据匹配规则**：`match_linuxdo_account()` 通过 update_sessions.json 的账号名称中是否包含邮箱来匹配 `LINUXDO_ACCOUNTS` 中的凭据。例如：
+- 账号名 `linuxdo_87247_ZHnagsan_2621097668@qq.com_AnyRouter` 包含 `2621097668@qq.com`
+- 自动匹配到 `LINUXDO_ACCOUNTS` 中 `login='2621097668@qq.com'` 的条目
 
-**二次 WAF 挑战处理**（关键机制，文档之前缺失）：
+**AgentRouter 特殊处理**：AgentRouter 使用阿里云滑动验证（非 acw_sc__v2 JS 挑战），headless 浏览器无法通过。`sites.json` 中标记 `no_auto_refresh: true`，Phase 1 检测到 session 过期时直接报错，不进入 Phase 2。需手动在浏览器中完成 OAuth 登录后更新 `update_sessions.json`。
 
-第一次 WAF 通过后，API 请求有时仍返回 WAF 挑战页面（而非 JSON）。auto_checkin.py 有重试机制：
+### 4.2 solve_waf.js - WAF Cookie 求解器
 
-```python
-# 第一次请求 /api/user/self
-resp = client.get(f'{domain}/api/user/self', ...)
-if '<script>' in resp.text and 'arg1=' in resp.text:
-    # API 响应是 WAF 挑战页面而非 JSON！
-    # 重新提取脚本 → 重新调用 solve_waf_challenge() → 更新 cookies
-    # 用新 cookies 重试请求
-    resp = client.get(f'{domain}/api/user/self', ...)
-```
+**用途**：解析 AnyRouter 的阿里云 WAF acw_sc__v2 JS 挑战脚本，输出 `acw_sc__v2` cookie
 
-> 为什么会出现二次挑战：阿里云 WAF 有时对不同路径（/ 和 /api/user/self）分别验证。第一次解析的 acw_sc__v2 可能只对首页有效，API 路径需要重新计算。
-
-**工作流程**：
-```
-对每个账号:
-    1. [AnyRouter] 获取 WAF cookies (solve_waf.js)
-    2. 携带 session + WAF cookies 调用 /api/user/self 获取用户信息
-    3. 如果遇到二次 WAF 挑战（响应是 HTML 且包含 arg1=），重新解析
-    4. 调用 /api/user/sign_in 执行签到
-    5. [AgentRouter] 直接用 session 调用 API（无需 WAF）
-```
-
-**超时配置**：
-- WAF 请求：`timeout=15.0`（WAF 可能需要额外的服务端处理时间）
-- API 请求：`timeout=30.0`（包含可能的二次 WAF 重试时间）
-- Node.js 子进程：`timeout=10`（Python 侧），solve_waf.js 内部 `setTimeout(5000)`（JS 侧双层保护）
-
-**注意：agentrouter 签到路径不一致**：auto_checkin.py 中 agentrouter 显式设置了 `sign_in_path='/api/user/sign_in'`，但 utils/config.py 中 agentrouter 的 `sign_in_path=None`（表示查询 /api/user/self 即自动签到）。实际行为取决于使用哪个脚本 -- auto_checkin.py 会显式调用签到接口，checkin.py 对 agentrouter 不调用签到接口。
-
-### 4.3 solve_waf.js - WAF Cookie 求解器
-
-**用途**：解析 AnyRouter 的阿里云 WAF 挑战脚本，输出 `acw_sc__v2` cookie
+> 注意：这是 AnyRouter 的 acw_sc__v2 JS 挑战，可以用 Node.js 解决。AgentRouter 的阿里云滑动验证是完全不同的机制，无法用此方式绕过。
 
 **单独测试**：
 ```bash
-# 手动使用（通常不需要，脚本会自动调用）
+# 手动使用（通常不需要，multi_site_checkin.py 会自动调用）
 node solve_waf.js 挑战脚本文件.js
 # 输出: {"acw_sc__v2":"计算出的值"}
 ```
 
-### 4.4 checkin.py - GitHub Actions 签到脚本
+### 4.3 checkin.py - GitHub Actions 签到脚本
 
 **用途**：设计用于 GitHub Actions 云端运行的签到脚本，是功能最完整的版本
 
-**与 auto_checkin.py 的核心区别**：
+**与 multi_site_checkin.py 的核心区别**：
 
-| 维度 | checkin.py (CI 版) | auto_checkin.py (本地版) |
+| 维度 | checkin.py (CI 版) | multi_site_checkin.py (本地版) |
 |------|-------------------|----------------------|
-| WAF 绕过 | Playwright 内置 Chromium（`launch_persistent_context`） | httpx + Node.js solve_waf.js |
-| 异步模型 | async/await | 同步 |
-| 配置来源 | 环境变量 `ANYROUTER_ACCOUNTS` | 文件（accounts.json 等） |
+| WAF 绕过 | Playwright 内置 Chromium（`launch_persistent_context`） | httpx + Node.js solve_waf.js（AnyRouter）/ 浏览器自动执行（公益站） |
+| 异步模型 | async/await | async/await |
+| 配置来源 | 环境变量 `ANYROUTER_ACCOUNTS` | sites.json + update_sessions.json |
 | 通知功能 | 余额监控 + 多渠道通知 | 无 |
-| 二次 WAF | 无（Playwright 自动处理） | 有（检测 HTML + 重新解析） |
 | HTTP 版本 | HTTP/2（`http2=True`） | HTTP/1.1 |
-| SSL 验证 | 禁用（`verify=False`） | 启用 |
-| 依赖 | Playwright + Chromium | Node.js |
+| SSL 验证 | 禁用（`verify=False`） | 禁用（`verify=False`） |
+| 依赖 | Playwright + Chromium | Playwright + 真实 Chrome + Node.js |
 
 **WAF 绕过方式详解**：
 
@@ -778,7 +708,7 @@ browser = await playwright.chromium.launch_persistent_context(
 > - GitHub Actions 环境没有真实 Chrome
 > - 但只需要获取 WAF cookies（不需要通过 LinuxDO 的 Cloudflare Turnstile）
 > - Playwright Chromium + 反检测参数足以通过阿里云 WAF
-> - 而 auto_refresh_chrome.py 需要通过 LinuxDO Turnstile，所以必须用真实 Chrome
+> - 而 multi_site_checkin.py 需要通过 LinuxDO Turnstile，所以必须用真实 Chrome
 
 WAF cookie 完整性校验：
 ```python
@@ -787,7 +717,7 @@ required = {'acw_tc', 'cdn_sec_tc', 'acw_sc__v2'}
 if not required.issubset(cookies.keys()):
     # 校验失败 → 等待 3 秒后重试
 
-# 而 auto_checkin.py 的容错更宽松：
+# 而 multi_site_checkin.py 的 get_waf_cookies() 容错更宽松：
 # "不一定需要全部，继续尝试"
 ```
 
@@ -840,7 +770,7 @@ if 'success' in response_text:
 quota_display = quota / 500000  # 显示为美元
 ```
 
-> `500000` 是 new-api 框架的内部单位换算系数。new-api 中 1 美元 = 500,000 quota 单位。例如 `quota=7280991` 表示约 $14.56。auto_checkin.py 中同样使用此系数。
+> `500000` 是 new-api 框架的内部单位换算系数。new-api 中 1 美元 = 500,000 quota 单位。例如 `quota=7280991` 表示约 $14.56。
 
 **环境变量**：
 - `ANYROUTER_ACCOUNTS`: JSON 数组，账号配置
@@ -848,7 +778,7 @@ quota_display = quota / 500000  # 显示为美元
 - `ENCRYPTION_KEY`: Fernet 加密密钥
 - 通知相关：`SERVERPUSHKEY`、`PUSHPLUS_TOKEN`、`EMAIL_*` 等
 
-### 4.5 probe_sites.py - 批量站点探测
+### 4.4 probe_sites.py - 批量站点探测
 
 **用途**：批量检测站点是否为 new-api 框架、是否支持签到、是否有 LinuxDO OAuth
 
@@ -898,47 +828,46 @@ python probe_sites.py
 - httpx 无法绕过 Cloudflare/WAF，被拦截的站点会被误判为"非 new-api"
 - `checkin_enabled=None` 不代表无签到，旧版 new-api 可能不返回此字段
 
-### 4.6 脚本架构对比
+### 4.5 脚本架构对比
 
-系统有 4 个签到相关脚本，各有不同的设计目标和技术选型：
+系统有 2 个签到相关脚本，各有不同的设计目标和技术选型：
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        脚本架构全景图                                  │
 │                                                                     │
-│  ┌─────────────────┐   ┌───────────────────┐   ┌────────────────┐  │
-│  │  auto_checkin.py │   │    checkin.py      │   │ multi_site_    │  │
-│  │  (本地签到)       │   │  (GitHub Actions)  │   │ checkin.py     │  │
-│  ├─────────────────┤   ├───────────────────┤   ├────────────────┤  │
-│  │ httpx (同步)     │   │ httpx (async)     │   │ Playwright     │  │
-│  │ + Node.js WAF   │   │ + Playwright WAF  │   │ + 真实 Chrome   │  │
-│  │                 │   │ + 通知 + 余额监控   │   │ + OAuth 全流程  │  │
-│  ├─────────────────┤   ├───────────────────┤   ├────────────────┤  │
-│  │ AnyRouter       │   │ AnyRouter         │   │ 27 new-api 站  │  │
-│  │ AgentRouter     │   │ AgentRouter       │   │ 4 LinuxDO 账号  │  │
-│  └────────┬────────┘   └────────┬──────────┘   └───────┬────────┘  │
-│           │                     │                      │           │
-│           ▼                     ▼                      ▼           │
-│  update_sessions.json    环境变量              site_info.json       │
-│                                               checkin_results.json  │
-│                                                                     │
-│  ┌─────────────────────┐                                           │
-│  │auto_refresh_chrome.py│  Session 过期时调用                        │
-│  │  (Session 刷新)      │  真实 Chrome + CDP + OAuth                │
-│  └─────────────────────┘                                           │
+│  ┌───────────────────┐   ┌──────────────────────────────────────┐  │
+│  │    checkin.py      │   │ multi_site_checkin.py                │  │
+│  │  (GitHub Actions)  │   │ (本地主力脚本)                        │  │
+│  ├───────────────────┤   ├──────────────────────────────────────┤  │
+│  │ httpx (async)     │   │ new-api 公益站:                       │  │
+│  │ + Playwright WAF  │   │   Playwright + 真实 Chrome + OAuth    │  │
+│  │ + 通知 + 余额监控   │   │ AnyRouter/AgentRouter:               │  │
+│  │                   │   │   httpx + Node.js WAF + 浏览器 OAuth  │  │
+│  ├───────────────────┤   ├──────────────────────────────────────┤  │
+│  │ AnyRouter         │   │ 27 new-api 站 + AnyRouter/AgentRouter│  │
+│  │ AgentRouter       │   │ 4 LinuxDO 账号                        │  │
+│  └────────┬──────────┘   └───────┬──────────────────────────────┘  │
+│           │                      │                                  │
+│           ▼                      ▼                                  │
+│  环境变量              site_info.json + update_sessions.json        │
+│                        checkin_results.json                         │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
+> `auto_checkin.py`（本地签到）和 `auto_refresh_chrome.py`（Session 刷新）已删除，功能整合到 `multi_site_checkin.py` 的 `process_external_sites()` 中。
+
 **关键技术决策对比**：
 
-| 决策 | auto_checkin.py | checkin.py | multi_site_checkin.py | auto_refresh_chrome.py |
-|------|----------------|------------|----------------------|----------------------|
-| **浏览器** | 不需要 | Playwright Chromium | 真实 Chrome + CDP | 真实 Chrome + CDP |
-| **为什么** | 已有 session，只需 WAF | CI 环境无真实 Chrome，WAF 不需要 Turnstile | 需要通过 LinuxDO Turnstile | 同左 |
-| **WAF 方式** | Node.js eval | 浏览器自动执行 | 浏览器自动执行 | 浏览器自动执行 |
-| **异步** | 同步 httpx | async（配合 Playwright） | async（配合 Playwright） | async |
-| **登录** | 不登录（已有 session） | 不登录（已有 session） | 浏览器内 API 登录 | 浏览器内 API 登录 |
-| **签到** | httpx API 调用 | httpx API 调用 | 浏览器内 fetch | 不签到（只刷新 session） |
+| 决策 | checkin.py | multi_site_checkin.py |
+|------|------------|----------------------|
+| **浏览器** | Playwright Chromium | 真实 Chrome + CDP |
+| **为什么** | CI 环境无真实 Chrome，WAF 不需要 Turnstile | 需要通过 LinuxDO Turnstile |
+| **WAF 方式** | 浏览器自动执行 | AnyRouter: Node.js eval / 公益站: 浏览器自动执行 |
+| **异步** | async（配合 Playwright） | async（配合 Playwright） |
+| **登录** | 不登录（已有 session） | 浏览器内 API 登录 |
+| **签到** | httpx API 调用 | httpx 直连 + 浏览器内 fetch |
+| **Session 刷新** | 不刷新 | 自动 OAuth 刷新（AnyRouter）/ 报错（AgentRouter） |
 
 **为什么需要真实 Chrome 而非 Playwright Chromium？**
 
@@ -953,12 +882,12 @@ LinuxDO Cloudflare Turnstile 检测:
 ```
 
 因此：
-- 需要通过 LinuxDO → 必须用真实 Chrome（multi_site_checkin.py、auto_refresh_chrome.py）
-- 只需要 WAF cookies → Playwright Chromium 或 Node.js 都行（checkin.py、auto_checkin.py）
+- 需要通过 LinuxDO → 必须用真实 Chrome（multi_site_checkin.py）
+- 只需要 WAF cookies → Playwright Chromium 或 Node.js 都行（checkin.py、multi_site_checkin.py 的 AnyRouter WAF 解析）
 
-**URL 编码方式不一致**：
-- auto_refresh_chrome.py: `redirect_uri.replace(':', '%3A').replace('/', '%2F')` — 手动编码
-- multi_site_checkin.py: `urllib.parse.quote(redirect_uri, safe='')` — 标准库
+**URL 编码方式**：
+- `process_external_sites()` 中的 OAuth URL 构建使用 `redirect_uri.replace(':', '%3A').replace('/', '%2F')` 手动编码
+- `process_account()` 中的 new-api 公益站使用 `urllib.parse.quote(redirect_uri, safe='')` 标准库
 
 两种方式功能等价，后者更规范。历史原因导致不一致，不影响功能。
 
@@ -969,23 +898,20 @@ LinuxDO Cloudflare Turnstile 检测:
 ### 5.1 日常签到流程
 
 ```bash
-# 1. 检查 session 是否有效 + 签到
-python auto_checkin.py
-
-# 如果提示 session 过期:
-# 2. 自动刷新 session
-python auto_refresh_chrome.py
-
-# 3. 再次签到
-python auto_checkin.py
+# 一键完成所有签到（new-api 公益站 + AnyRouter/AgentRouter）
+python multi_site_checkin.py
 ```
 
-### 5.2 一键自动化（推荐）
+流程说明：
+- new-api 公益站：Phase 1 httpx 缓存签到 → Phase 2 浏览器 OAuth（仅过期站点）
+- AnyRouter：Phase 1 httpx + WAF 签到 → Phase 2 浏览器 OAuth 刷新（session 过期时）
+- AgentRouter：Phase 1 httpx 签到 → session 过期时报错（阿里云滑动验证无法自动化，需手动刷新 `update_sessions.json`）
 
-可以将两个脚本串联：
+### 5.2 GitHub Actions 签到
+
 ```bash
-# 先刷新过期 session，再签到
-python auto_refresh_chrome.py && python auto_checkin.py
+# checkin.py 用于 CI 环境（AnyRouter/AgentRouter）
+python checkin.py
 ```
 
 ### 5.3 OAuth 各平台参数
@@ -997,7 +923,8 @@ python auto_refresh_chrome.py && python auto_checkin.py
 | 域名 | `anyrouter.top` | `agentrouter.org` |
 | OAuth Client ID | `8w2uZtoWH9AUXrZr1qeCEEmvXLafea3c` | `KZUecGfhhDZMVnv8UtEdhOhf9sNOhqVX` |
 | 回调地址 | `anyrouter.top/oauth/linuxdo` | `agentrouter.org/oauth/linuxdo` |
-| 需要 WAF | 是 | 否 |
+| 需要 WAF | 是（acw_sc__v2 JS 挑战，Node.js 可解） | 是（阿里云滑动验证，无法自动化） |
+| 自动刷新 Session | 支持（浏览器 OAuth） | 不支持（`no_auto_refresh: true`） |
 | 签到接口 | `/api/user/sign_in` | `/api/user/sign_in` |
 | State API | `/api/oauth/state` | `/api/oauth/state` |
 | 用户信息 | `/api/user/self` | `/api/user/self` |
@@ -1088,10 +1015,24 @@ OAuth 登录后，用户 ID 的获取有两种途径：
     "name": "Einzieg API",
     "client_id": "aBambSqvDqCgTW8fCarJBeQji8M5RATf"
   },
-  "hotaru": {
-    "domain": "https://hotaruapi.com",
-    "name": "HotaruAPI",
-    "client_id": "qVGkHnU8fLzJVEMgHCuNUCYifUQwePWn"
+  "anyrouter": {
+    "domain": "https://anyrouter.top",
+    "name": "AnyRouter",
+    "provider": "anyrouter",
+    "sign_in_path": "/api/user/sign_in",
+    "needs_waf": true,
+    "oauth_client_id": "8w2uZtoWH9AUXrZr1qeCEEmvXLafea3c",
+    "redirect_uri": "https://anyrouter.top/oauth/linuxdo"
+  },
+  "agentrouter": {
+    "domain": "https://agentrouter.org",
+    "name": "AgentRouter",
+    "provider": "agentrouter",
+    "sign_in_path": "/api/user/sign_in",
+    "oauth_client_id": "KZUecGfhhDZMVnv8UtEdhOhf9sNOhqVX",
+    "redirect_uri": "https://agentrouter.org/oauth/linuxdo",
+    "no_auto_refresh": true,
+    "no_auto_refresh_reason": "阿里云滑动验证，无法自动化"
   }
 }
 ```
@@ -1100,6 +1041,11 @@ OAuth 登录后，用户 ID 的获取有两种途径：
 - `domain` 必填，`name`/`client_id` 可选（运行时自动从 `/api/status` 获取）
 - `skip: true` + `skip_reason` 跳过该站点
 - `accounts: ["ZHnagsan", "caijijiji"]` 限制可用账号（默认所有账号）
+- `provider` 字段标识 AnyRouter/AgentRouter 类型站点（由 `process_external_sites()` 处理）
+- `oauth_client_id` + `redirect_uri`：provider 站点的 OAuth 参数，用于浏览器 OAuth 刷新
+- `needs_waf: true`：标记需要 WAF cookies 的站点（AnyRouter）
+- `sign_in_path`：provider 站点的签到接口路径
+- `no_auto_refresh: true` + `no_auto_refresh_reason`：标记无法自动刷新 session 的站点（如 AgentRouter 的阿里云滑动验证），Phase 1 检测到 session 过期时直接报错，不进入 Phase 2
 
 **site_info.json**：启动时 `sync_site_info()` 自动同步 sites.json 变更：
 - 新站点 → 创建条目 + 所有账号 pending
@@ -1290,11 +1236,9 @@ if c['value'] not in pre_oauth_sessions:
 **症状**：签到时提示"未登录"或 session 无效
 
 **解决**：
-```bash
-python auto_refresh_chrome.py
-```
-
-**注意**：只有在 `LINUXDO_CREDENTIALS` 中配置了对应凭据的账号才能自动刷新。
+- **new-api 公益站**：`multi_site_checkin.py` 自动处理，Phase 1 检测过期后 Phase 2 自动 OAuth 刷新
+- **AnyRouter**：`multi_site_checkin.py` 的 `process_external_sites()` Phase 2 自动 OAuth 刷新，刷新后回写 `update_sessions.json`
+- **AgentRouter**：阿里云滑动验证无法自动化（`no_auto_refresh: true`），需手动在浏览器中完成 OAuth 登录，更新 `update_sessions.json` 中对应账号的 session
 
 ### 7.2 Chrome CDP 连接失败
 
@@ -1307,7 +1251,7 @@ python auto_refresh_chrome.py
 # 关闭所有 Chrome 进程
 taskkill /F /IM chrome.exe /T
 # 重新运行
-python auto_refresh_chrome.py
+python multi_site_checkin.py
 ```
 
 ### 7.3 LinuxDO 登录失败
@@ -1360,18 +1304,17 @@ node solve_waf.js test.js
 
 ### 7.7 无匹配凭据
 
-**症状**：`过期 -> 无匹配凭据，跳过`
+**症状**：`无匹配 LinuxDO 凭据，无法刷新`
 
-**原因**：账号名称中的邮箱在 `LINUXDO_CREDENTIALS` 中没有对应条目
+**原因**：update_sessions.json 中账号名称的邮箱在 `LINUXDO_ACCOUNTS` 中没有对应条目
 
-**解决**：在 `auto_refresh_chrome.py` 的 `LINUXDO_CREDENTIALS` 中添加对应凭据：
+**解决**：在 `multi_site_checkin.py` 的 `LINUXDO_ACCOUNTS` 中添加对应凭据：
 ```python
-LINUXDO_CREDENTIALS = {
-    '2621097668@qq.com': {'login': '...', 'password': '...'},
-    'xiaoweidai998@163.com': {'login': '...', 'password': '...'},
-    'dw2621097668@gmail.com': {'login': '...', 'password': '...'},
+LINUXDO_ACCOUNTS = [
+    {'label': 'ZHnagsan', 'login': '2621097668@qq.com', 'password': '...'},
+    {'label': 'caijijiji', 'login': 'dw2621097668@gmail.com', 'password': '...'},
     # ...
-}
+]
 ```
 
 ### 7.8 多站点签到 401 "未提供 New-Api-User"
@@ -1398,6 +1341,8 @@ LINUXDO_CREDENTIALS = {
 ## 八、配置参考
 
 ### 8.1 update_sessions.json 格式
+
+由 `multi_site_checkin.py` 的 `process_external_sites()` Phase 2 回写（`save_external_session()`）。初始数据需手动创建或从旧版脚本迁移。
 
 ```json
 [
@@ -1517,7 +1462,7 @@ ProviderConfig(
 )
 ```
 
-> **重要不一致**：auto_checkin.py 中 agentrouter 有显式 `sign_in_path='/api/user/sign_in'`（会调用签到接口），而这里是 `None`（不调用签到接口，查询自动签到）。实际效果一样（都能签到），但代码路径不同。
+> **重要不一致**：`sites.json` 中 agentrouter 有显式 `sign_in_path='/api/user/sign_in'`（会调用签到接口），而 `utils/config.py` 中是 `None`（不调用签到接口，查询自动签到）。实际效果一样（都能签到），但代码路径不同。取决于使用哪个脚本 -- `multi_site_checkin.py` 使用 `sites.json` 的配置，`checkin.py` 使用 `utils/config.py` 的配置。
 
 **AppConfig.load_from_env() - 配置加载逻辑**：
 
@@ -1564,9 +1509,8 @@ cookies 字符串格式支持：`"session=MTc3MDk2OTIzNn...; other=value"` → �
 **当前安全问题**：
 
 1. `multi_site_checkin.py` 第 73-79 行：4 个 LinuxDO 账号密码以**明文**硬编码在源码中
-2. `auto_refresh_chrome.py` 第 48-53 行：同样明文硬编码
-3. `update_sessions.json`：包含 session token
-4. `checkin_results.json`：包含 session 前 50 字符
+2. `update_sessions.json`：包含 session token
+3. `checkin_results.json`：包含 session 前 50 字符
 
 **`.gitignore` 已忽略的文件**：
 - `.env`、`*.json`（配置文件）、`credentials.*`
@@ -1689,27 +1633,24 @@ new-api 框架中 quota 使用内部整数单位，换算关系：
   quota = 1,028,987 → $2.06
 ```
 
-这个系数在 `checkin.py` 第 153 行和 `auto_checkin.py` 第 187 行均出现：`quota / 500000`。来源是 new-api 框架的 `model/user.go` 中的定义。
+这个系数在 `checkin.py` 第 153 行和 `multi_site_checkin.py` 中均出现：`quota / 500000`。来源是 new-api 框架的 `model/user.go` 中的定义。
 
 ### L. 脚本间超时与等待时间对比
 
-| 参数 | auto_checkin.py | checkin.py | multi_site_checkin.py | auto_refresh_chrome.py |
-|------|----------------|------------|----------------------|----------------------|
-| WAF 请求超时 | 15s | 30s | - | - |
-| API 请求超时 | 30s | 30s | - | - |
-| Node.js 子进程 | 10s | - | - | - |
-| solve_waf.js 内部 | 5s | - | - | - |
-| OAuth 总等待 | - | - | 120s | 180s |
-| CF 通过等待循环 | - | - | 2s x 30 | 2s x 30 |
-| 点击"允许"后等待 | - | - | 5s | 5s |
-| SPA 加载等待 | - | - | 5s | - |
-| WAF JS 执行等待 | - | - | 3s | 5s |
-| probe 探测超时 | - | - | - | - |
-| probe_sites.py | 10s | - | - | - |
+| 参数 | checkin.py | multi_site_checkin.py |
+|------|------------|----------------------|
+| WAF 请求超时 | 30s | 15s（get_waf_cookies） |
+| API 请求超时 | 30s | - |
+| Node.js 子进程 | - | 10s |
+| solve_waf.js 内部 | - | 5s |
+| OAuth 总等待 | - | 120s（公益站）/ 180s（AnyRouter） |
+| CF 通过等待循环 | - | 2s x 30 |
+| 点击"允许"后等待 | - | 5s |
+| SPA 加载等待 | - | 5s |
+| WAF JS 执行等待 | - | 3s（公益站）|
+| probe_sites.py | - | - |
 
-> OAuth 总等待时间差异原因：auto_refresh_chrome.py 同时处理 AnyRouter 的 WAF（更慢），设 180s；multi_site_checkin.py 处理无 WAF 站点居多，设 120s。
-
-> WAF JS 执行等待时间差异（3s vs 5s）：multi_site_checkin.py 处理的站点多数无 WAF，3s 足够；auto_refresh_chrome.py 处理 AnyRouter（重 WAF），5s 更保险。
+> OAuth 总等待时间差异原因：公益站多数无 WAF，120s 足够；AnyRouter 有 WAF 且 CF 可能更慢，process_external_sites 中设 180s。
 
 ### M. Discourse second_factor_method 枚举值
 
@@ -1749,7 +1690,7 @@ client = httpx.Client(http2=True, timeout=30.0, verify=False)
 - 部分 WAF/CDN 对 HTTP/1.1 请求的检测更严格
 - HTTP/2 的连接复用减少了 TLS 握手次数
 - 某些 Cloudflare 配置对 HTTP/2 客户端更友好
-- auto_checkin.py 不使用 HTTP/2 因为 Node.js WAF 解析不需要
+- multi_site_checkin.py 不使用 HTTP/2 因为 Node.js WAF 解析和 httpx 直连签到不需要
 
 **Playwright 反检测参数**（checkin.py）：
 ```

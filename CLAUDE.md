@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-多站点自动签到系统，支持 AnyRouter/AgentRouter 及 27 个 new-api 公益站（活跃）+ 6 个跳过站点的自动登录和签到。使用 Playwright + 真实 Chrome 进行浏览器自动化（绕过 Cloudflare/WAF），httpx 处理 HTTP 请求和缓存签到。支持 4 个 LinuxDO 账号并行处理（Windows）或串行处理（Linux 服务器自动适配）、Session 缓存加速、密码加密存储、GitHub Actions 云端运行。共探测 66 个站点。
+多站点自动签到系统，支持 AnyRouter/AgentRouter 及 27 个 new-api 公益站（活跃）+ 6 个跳过站点的自动登录和签到。使用 Playwright + 真实 Chrome 进行浏览器自动化（绕过 Cloudflare/WAF），httpx 处理 HTTP 请求和缓存签到。支持 4 个 LinuxDO 账号并行处理（Windows）或串行处理（Linux 服务器自动适配）、Session 缓存加速、密码加密存储、GitHub Actions 云端运行。共探测 66 个站点。所有签到逻辑统一由 `multi_site_checkin.py` 处理（含 AnyRouter/AgentRouter）。
 
 站点配置外置到 `sites.json`（人工维护），运行时数据存储在 `site_info.json`（程序唯一执行数据源）。启动时自动 sync 两个文件，检测新增/移除站点和账号。
 
@@ -25,14 +25,8 @@ playwright install chromium
 
 ### 运行签到
 ```bash
-# 多站点签到（27 站点 x 4 账号，主力脚本）
+# 多站点签到（AnyRouter/AgentRouter + 27 公益站 x 4 账号，主力脚本）
 python multi_site_checkin.py
-
-# AnyRouter/AgentRouter 签到（需要 update_sessions.json）
-python auto_checkin.py
-
-# AnyRouter/AgentRouter Session 刷新（session 过期时使用）
-python auto_refresh_chrome.py
 
 # 主签到脚本（GitHub Actions 用）
 uv run checkin.py
@@ -71,11 +65,11 @@ pre-commit run --all-files
 
 ### 核心模块
 
-**multi_site_checkin.py** - 多站点自动登录 + 签到（主力脚本）
-- 27 个 new-api 公益站 x 4 个 LinuxDO 账号
+**multi_site_checkin.py** - 统一签到入口（主力脚本）
+- AnyRouter/AgentRouter + 27 个 new-api 公益站 x 4 个 LinuxDO 账号
 - 站点配置外置到 `sites.json`，运行数据存储在 `site_info.json`（唯一执行数据源）
 - 启动时 `sync_site_info()` 自动同步：检测新站点/新账号/移除站点，跨天重置签到状态
-- 两阶段执行：Phase 1 httpx 缓存直连 + Phase 2 浏览器 OAuth
+- 三阶段执行：Phase 0 AnyRouter/AgentRouter httpx 直连（session 过期时浏览器 OAuth 自动刷新） + Phase 1 new-api httpx 缓存直连 + Phase 2 浏览器 OAuth
 - 4 账号 asyncio.gather 并行（Windows，端口 9222-9225）
 - Linux 串行模式：内存 < 3GB 自动切换，或 `--serial` 手动指定（单 Chrome 实例，端口 9222）
 - Linux headless：`--headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage`
@@ -91,16 +85,6 @@ pre-commit run --all-files
 - 支持余额变化检测和通知
 - 异步执行，支持多账号并发
 
-**auto_refresh_chrome.py** - AnyRouter/AgentRouter Session 自动刷新
-- 检测 session 过期 → 自动 OAuth 重新登录获取新 session
-- 按 LinuxDO 凭据分组，每组只启动一个 Chrome 实例
-- 保存新 session 到 update_sessions.json
-
-**auto_checkin.py** - AnyRouter/AgentRouter 每日签到
-- 读取 update_sessions.json 中的 session
-- AnyRouter: solve_waf.js 获取 WAF cookies + session 调用 API
-- AgentRouter: 直接用 session 调用 API
-
 **utils/config.py** - 配置管理
 - `ProviderConfig`: 定义不同平台的配置（domain, API paths, bypass_method）
 - `AccountConfig`: 账号配置（cookies, api_user, provider）
@@ -113,7 +97,8 @@ pre-commit run --all-files
 
 ### 关键设计模式
 
-**两阶段签到** (`multi_site_checkin.py`)
+**三阶段签到** (`multi_site_checkin.py`)
+- Phase 0: AnyRouter/AgentRouter httpx 直连签到，session 过期时自动浏览器 OAuth 刷新（AgentRouter 除外，有阿里云滑动验证）
 - Phase 1: 用 site_info.json 中的缓存 session，通过 httpx 直接调 API 签到（~30s 完成）
 - Phase 2: 对无缓存或缓存过期的站点，启动浏览器走 OAuth 获取新 session
 - Session 过期检测：3xx 重定向、401、HTML 响应均视为过期
@@ -185,7 +170,8 @@ pre-commit run --all-files
 2. `domain` 必填，`name` 和 `client_id` 可选（运行时自动从 `/api/status` 获取）
 3. 如需跳过某站点，添加 `"skip": true, "skip_reason": "原因"`
 4. 如需限制账号，添加 `"accounts": ["ZHnagsan", "caijijiji"]`（默认所有账号）
-5. 运行脚本时 `sync_site_info()` 自动检测新站点并创建 pending 条目
+5. AnyRouter/AgentRouter 类型站点额外字段：`oauth_client_id`、`redirect_uri`；如有验证码等无法自动刷新，添加 `"no_auto_refresh": true, "no_auto_refresh_reason": "原因"`
+6. 运行脚本时 `sync_site_info()` 自动检测新站点并创建 pending 条目
 
 ### 添加新平台支持（AnyRouter/AgentRouter 类型）
 
@@ -204,7 +190,12 @@ pre-commit run --all-files
 
 ### 修改签到逻辑
 
-- AnyRouter/AgentRouter: `checkin.py` 的 `check_in_account()` 和 `get_waf_cookies()`
+- AnyRouter/AgentRouter（`multi_site_checkin.py`）:
+  - httpx 签到: `_ext_try_checkin()` - session 直连签到
+  - 浏览器刷新: `_ext_browser_refresh_and_checkin()` - session 过期时 OAuth 刷新并重试
+  - 账号匹配: `match_linuxdo_account()` - 外部站点账号名匹配 LinuxDO 凭据
+  - Session 保存: `save_external_session()` - 刷新后回写 update_sessions.json
+- AnyRouter/AgentRouter（`checkin.py`，GitHub Actions 用）: `check_in_account()` 和 `get_waf_cookies()`
 - new-api 公益站:
   - httpx 直连: `do_checkin_via_httpx()` - 缓存 session 快速签到
   - 浏览器签到: `do_checkin_via_browser()` - OAuth 登录后签到
@@ -242,7 +233,6 @@ logs/checkin_*.log            ← 程序自动生成（详细日志）
 - `encrypt_password.py`: 密码加密工具
 - `convert_config.py`: 配置格式转换
 - `generate_config.py`: 生成配置模板
-- `auto_refresh_chrome.py`: Chrome 浏览器方式刷新 session（推荐，处理 Cloudflare/WAF）
 - `test_session.py`: 本地 session 测试工具
 - `solve_waf.js`: 阿里云 WAF acw_sc__v2 cookie 求解器
 - `probe_sites.py`: 站点探测脚本（检查存活、版本、签到状态）
