@@ -28,6 +28,7 @@ from urllib.parse import quote
 import httpx
 
 IS_LINUX = platform.system() == 'Linux'
+PROXY_URL = os.environ.get('https_proxy') or os.environ.get('http_proxy') or os.environ.get('HTTPS_PROXY') or os.environ.get('HTTP_PROXY')
 
 
 def detect_chrome():
@@ -1083,6 +1084,8 @@ async def _ext_browser_refresh_and_checkin(failed_accounts, info):
 		if IS_LINUX:
 			chrome_args += ['--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
 							'--disable-blink-features=AutomationControlled', '--window-size=1920,1080']
+		if PROXY_URL:
+			chrome_args.append(f'--proxy-server={PROXY_URL}')
 		chrome_args.append('about:blank')
 		proc = subprocess.Popen(chrome_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -1451,6 +1454,8 @@ async def process_account(account, info, debug_port=9222):
 			'--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
 			'--disable-blink-features=AutomationControlled', '--window-size=1920,1080',
 		]
+	if PROXY_URL:
+		chrome_args.append(f'--proxy-server={PROXY_URL}')
 	chrome_args.append('about:blank')
 	proc = subprocess.Popen(chrome_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
