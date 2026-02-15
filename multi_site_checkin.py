@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections import defaultdict
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -141,6 +142,30 @@ def solve_waf_challenge(script_content):
 		return None
 	except Exception:
 		return None
+
+
+def match_linuxdo_account(ext_account_name):
+	"""从 update_sessions.json 的 name 中提取邮箱，匹配 LINUXDO_ACCOUNTS 中的凭据。
+	如 'linuxdo_34874_ZHnagsan_2621097668@qq.com_AnyRouter' → 匹配 login='2621097668@qq.com'"""
+	for acc in LINUXDO_ACCOUNTS:
+		if acc['login'] in ext_account_name:
+			return acc
+	return None
+
+
+def save_external_session(account_name, new_session):
+	"""回写新 session 到 update_sessions.json"""
+	try:
+		with open(EXTERNAL_SESSIONS_FILE, 'r', encoding='utf-8') as f:
+			accounts = json.load(f)
+		for acc in accounts:
+			if acc['name'] == account_name:
+				acc['cookies']['session'] = new_session
+				break
+		with open(EXTERNAL_SESSIONS_FILE, 'w', encoding='utf-8') as f:
+			json.dump(accounts, f, indent=2, ensure_ascii=False)
+	except Exception as e:
+		log.warning(f'    [WARN] 回写 session 失败: {e}')
 
 
 def get_waf_cookies(domain):
@@ -934,8 +959,337 @@ def get_active_sites(info, label):
 	return result
 
 
+async def _ext_try_checkin(acc, site_key, site_cfg, info, waf_cookies=None):
+	"""Phase 1: httpx 直连签到单个外部账号。返回 True=完成(成功或已签), False=需刷新"""
+	name = acc.get('name', '')
+	label = extract_label(name)
+	domain = site_cfg['domain']
+	sign_in_path = site_cfg.get('sign_in_path', '/api/user/sign_in')
+	needs_waf = site_cfg.get('needs_waf', False)
+	site_name = site_cfg.get('name', site_key)
+	session = acc.get('cookies', {}).get('session', '')
+	api_user = acc.get('api_user', '')
+
+	if not session or not api_user:
+		log.warning(f'    [{label}] 缺少 session 或 api_user，跳过')
+		return True  # 无法刷新，视为完成
+
+	# 今日已完成
+	acc_info = info.get(site_key, {}).get('accounts', {}).get(label, {})
+	if acc_info.get('checkin_status') in ('success', 'already_checked') and acc_info.get('checkin_date') == info['_meta']['checkin_date']:
+		log.info(f'    [{label}] 今日已签到，跳过')
+		return True
+
+	all_cookies = {**(waf_cookies or {}), 'session': session}
+	headers = {
+		'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+		'Accept': 'application/json, text/plain, */*',
+		'new-api-user': api_user,
+		'Origin': domain, 'Referer': f'{domain}/',
+	}
+
+	try:
+		async with httpx.AsyncClient(timeout=30.0, verify=False, follow_redirects=True) as client:
+			# WAF 二次验证
+			if needs_waf:
+				resp_verify = await client.get(f'{domain}/api/user/self', headers=headers, cookies=all_cookies)
+				if '<script>' in resp_verify.text and 'arg1=' in resp_verify.text:
+					scripts = re.findall(r'<script[^>]*>([\s\S]*?)</script>', resp_verify.text, re.IGNORECASE)
+					if scripts:
+						solved = solve_waf_challenge(scripts[0])
+						if solved:
+							all_cookies.update(solved)
+							all_cookies.update(dict(resp_verify.cookies))
+
+			# 验证 session
+			resp = await client.get(f'{domain}/api/user/self', headers=headers, cookies=all_cookies)
+			try:
+				user_data = resp.json()
+			except Exception:
+				log.warning(f'    [{label}] Session 过期（非 JSON 响应）')
+				return False  # 需要刷新
+
+			if not user_data.get('success'):
+				log.warning(f'    [{label}] Session 过期: {user_data.get("message", "")}')
+				return False  # 需要刷新
+
+			# 签到
+			checkin_headers = {**headers, 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'}
+			resp_checkin = await client.post(f'{domain}{sign_in_path}', headers=checkin_headers, cookies=all_cookies)
+			try:
+				result_data = resp_checkin.json()
+			except Exception:
+				log.warning(f'    [{label}] 签到响应异常')
+				record(label, site_key, site_name=site_name, domain=domain, login_ok=True, checkin_ok=False, error='签到响应异常')
+				update_account_info(info, site_key, label, checkin_status='failed', checkin_msg='签到响应异常')
+				save_site_info(info)
+				return True
+
+			msg = result_data.get('msg', result_data.get('message', ''))
+			if result_data.get('ret') == 1 or result_data.get('code') == 0 or result_data.get('success'):
+				log.info(f'    [{label}] 签到成功! {msg}')
+				record(label, site_key, site_name=site_name, domain=domain, login_ok=True, checkin_ok=True, checkin_msg=msg)
+				update_account_info(info, site_key, label, checkin_status='success', checkin_msg=msg, checkin_date=info['_meta']['checkin_date'])
+			elif '已' in msg or 'already' in msg.lower():
+				log.info(f'    [{label}] 今日已签到')
+				record(label, site_key, site_name=site_name, domain=domain, login_ok=True, checkin_ok=True, checkin_msg='今日已签到')
+				update_account_info(info, site_key, label, checkin_status='already_checked', checkin_msg='今日已签到', checkin_date=info['_meta']['checkin_date'])
+			else:
+				log.warning(f'    [{label}] 签到失败: {msg}')
+				record(label, site_key, site_name=site_name, domain=domain, login_ok=True, checkin_ok=False, error=msg)
+				update_account_info(info, site_key, label, checkin_status='failed', checkin_msg=msg)
+			save_site_info(info)
+			return True
+
+	except Exception as e:
+		log.error(f'    [{label}] 异常: {e}')
+		record(label, site_key, site_name=site_name, domain=domain, login_ok=False, checkin_ok=False, error=str(e))
+		update_account_info(info, site_key, label, checkin_status='failed', checkin_msg=str(e))
+		save_site_info(info)
+		return True
+
+
+async def _ext_browser_refresh_and_checkin(failed_accounts, info):
+	"""Phase 2: 浏览器 OAuth 刷新过期 session 并签到。
+	按 LinuxDO 凭据分组，每组只启动一个 Chrome、登录一次。"""
+	from playwright.async_api import async_playwright
+
+	# 按 LinuxDO 邮箱分组
+	groups = defaultdict(list)  # email → [(acc, site_key, site_cfg), ...]
+	for acc, site_key, site_cfg in failed_accounts:
+		creds = match_linuxdo_account(acc.get('name', ''))
+		if creds:
+			groups[creds['login']].append((acc, site_key, site_cfg, creds))
+		else:
+			label = extract_label(acc.get('name', ''))
+			log.warning(f'    [{label}] 无匹配 LinuxDO 凭据，无法刷新')
+
+	if not groups:
+		return
+
+	log.info(f'\n  [Phase 2] 浏览器 OAuth 刷新 ({sum(len(v) for v in groups.values())} 个账号, {len(groups)} 组)')
+
+	for cred_email, items in groups.items():
+		creds = items[0][3]  # 同组凭据相同
+		log.info(f'\n  {"─" * 50}')
+		log.info(f'  [LOGIN] LinuxDO: {cred_email} ({len(items)} 个账号)')
+
+		# 启动 Chrome
+		tmpdir = tempfile.mkdtemp(prefix='chrome_ext_')
+		chrome_args = [
+			CHROME_EXE, f'--remote-debugging-port={DEBUG_PORT}', f'--user-data-dir={tmpdir}',
+			'--no-first-run', '--no-default-browser-check',
+		]
+		if IS_LINUX:
+			chrome_args += ['--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
+							'--disable-blink-features=AutomationControlled', '--window-size=1920,1080']
+		chrome_args.append('about:blank')
+		proc = subprocess.Popen(chrome_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+		# 等待 CDP
+		cdp_ready = False
+		for _ in range(10):
+			await asyncio.sleep(1)
+			try:
+				async with httpx.AsyncClient() as _c:
+					await _c.get(f'http://127.0.0.1:{DEBUG_PORT}/json/version', timeout=2)
+				cdp_ready = True
+				break
+			except Exception:
+				pass
+
+		if not cdp_ready:
+			log.error(f'    [FAIL] Chrome CDP 未就绪')
+			proc.terminate()
+			shutil.rmtree(tmpdir, ignore_errors=True)
+			continue
+
+		async with async_playwright() as p:
+			try:
+				browser = await p.chromium.connect_over_cdp(f'http://127.0.0.1:{DEBUG_PORT}')
+				ctx = browser.contexts[0]
+				page = await ctx.new_page()
+
+				# 登录 LinuxDO
+				logged_in = await do_login(page, creds)
+				if not logged_in:
+					log.error(f'    [FAIL] LinuxDO 登录失败')
+					for acc, site_key, site_cfg, _ in items:
+						label = extract_label(acc.get('name', ''))
+						site_name = site_cfg.get('name', site_key)
+						record(label, site_key, site_name=site_name, domain=site_cfg['domain'],
+							   login_ok=False, checkin_ok=False, error='LinuxDO 登录失败')
+						update_account_info(info, site_key, label, checkin_status='failed', checkin_msg='LinuxDO 登录失败')
+					save_site_info(info)
+					await page.close()
+					await browser.close()
+					proc.terminate()
+					shutil.rmtree(tmpdir, ignore_errors=True)
+					continue
+
+				log.info(f'    [OK] LinuxDO 登录成功!')
+
+				# 逐个刷新
+				for acc, site_key, site_cfg, _ in items:
+					label = extract_label(acc.get('name', ''))
+					domain = site_cfg['domain']
+					site_name = site_cfg.get('name', site_key)
+					oauth_client_id = site_cfg.get('oauth_client_id', '')
+					redirect_uri = site_cfg.get('redirect_uri', '')
+					sign_in_path = site_cfg.get('sign_in_path', '/api/user/sign_in')
+					needs_waf = site_cfg.get('needs_waf', False)
+					domain_host = domain.replace('https://', '')
+
+					log.info(f'\n    [{label}] OAuth 刷新 {site_name}...')
+
+					if not oauth_client_id or not redirect_uri:
+						log.warning(f'    [{label}] 缺少 oauth_client_id/redirect_uri')
+						continue
+
+					# 浏览器访问站点首页（建立 WAF）
+					try:
+						await page.goto(f'{domain}/', wait_until='domcontentloaded', timeout=30000)
+						await asyncio.sleep(5)
+					except Exception:
+						await asyncio.sleep(3)
+
+					# 等待 WAF/CF
+					for i in range(15):
+						await asyncio.sleep(2)
+						try:
+							title = await page.title()
+						except Exception:
+							continue
+						if not any(kw in title for kw in ['稍候', 'moment', 'Cloudflare', 'Just a', 'checking']):
+							break
+
+					# 浏览器内获取 state
+					state_result = await page.evaluate("""
+						async () => {
+							try {
+								const resp = await fetch('/api/oauth/state', {
+									method: 'GET', credentials: 'same-origin',
+									headers: {'Accept': 'application/json'},
+								});
+								const data = await resp.json();
+								return {status: resp.status, state: data.data || ''};
+							} catch (e) { return {error: e.message}; }
+						}
+					""")
+
+					if not state_result or state_result.get('status') != 200 or not state_result.get('state'):
+						log.warning(f'    [{label}] 获取 state 失败: {json.dumps(state_result)}')
+						record(label, site_key, site_name=site_name, domain=domain,
+							   login_ok=False, checkin_ok=False, error='获取 OAuth state 失败')
+						update_account_info(info, site_key, label, checkin_status='failed', checkin_msg='获取 OAuth state 失败')
+						save_site_info(info)
+						continue
+
+					state = state_result['state']
+
+					# 构建 OAuth URL（用 sites.json 中的 oauth_client_id + redirect_uri）
+					encoded_redirect = redirect_uri.replace(':', '%3A').replace('/', '%2F')
+					oauth_url = (
+						f'{OAUTH_AUTHORIZE_URL}?response_type=code'
+						f'&client_id={oauth_client_id}'
+						f'&redirect_uri={encoded_redirect}'
+						f'&scope=read+write&state={state}'
+					)
+
+					# 导航到 OAuth
+					try:
+						await page.goto(oauth_url, wait_until='commit', timeout=30000)
+					except Exception:
+						await asyncio.sleep(2)
+
+					# 等待: CF → 允许 → session cookie
+					new_session = None
+					clicked_allow = False
+					for i in range(90):  # 180s
+						await asyncio.sleep(2)
+						try:
+							cur_url = page.url
+							title = await page.title()
+						except Exception:
+							break
+
+						if any(kw in title for kw in ['稍候', 'moment', 'Cloudflare', 'Just a', 'checking']):
+							if i % 15 == 0:
+								log.debug(f'    [{(i+1)*2}s] CF: {title[:30]}')
+							continue
+
+						if 'connect.linux.do' in cur_url and not clicked_allow:
+							try:
+								allow_btn = page.locator('text=允许').first
+								if await allow_btn.is_visible():
+									log.debug(f'    [{(i+1)*2}s] 点击"允许"...')
+									await allow_btn.click()
+									clicked_allow = True
+									await asyncio.sleep(5)
+									continue
+							except Exception:
+								pass
+
+						try:
+							cookies = await ctx.cookies()
+						except Exception:
+							break
+						for c in cookies:
+							if c['name'] == 'session' and domain_host in c.get('domain', ''):
+								new_session = c['value']
+								break
+						if new_session:
+							break
+
+						if i % 15 == 0:
+							log.debug(f'    [{(i+1)*2}s] {title[:25]} | {cur_url[:55]}')
+
+					if new_session:
+						log.info(f'    [{label}] [OK] Session 刷新成功!')
+						# 回写 update_sessions.json
+						save_external_session(acc.get('name', ''), new_session)
+						# 更新内存中的 acc（后续签到用新 session）
+						acc['cookies']['session'] = new_session
+
+						# 用新 session 签到
+						waf_cookies = None
+						if needs_waf:
+							waf_cookies = get_waf_cookies(domain)
+						done = await _ext_try_checkin(acc, site_key, site_cfg, info, waf_cookies)
+						if not done:
+							log.warning(f'    [{label}] 刷新后签到仍失败')
+							record(label, site_key, site_name=site_name, domain=domain,
+								   login_ok=True, checkin_ok=False, error='刷新后 session 仍无效')
+							update_account_info(info, site_key, label, checkin_status='failed', checkin_msg='刷新后 session 仍无效')
+							save_site_info(info)
+					else:
+						log.warning(f'    [{label}] [FAIL] Session 刷新失败')
+						record(label, site_key, site_name=site_name, domain=domain,
+							   login_ok=False, checkin_ok=False, error='OAuth 刷新 session 失败')
+						update_account_info(info, site_key, label, checkin_status='failed', checkin_msg='OAuth 刷新 session 失败')
+						save_site_info(info)
+
+				try:
+					await page.close()
+					await browser.close()
+				except Exception:
+					pass
+			except Exception as e:
+				log.error(f'    [ERROR] 浏览器异常: {e}')
+
+		proc.terminate()
+		try:
+			proc.wait(timeout=5)
+		except Exception:
+			proc.kill()
+		shutil.rmtree(tmpdir, ignore_errors=True)
+		# 清理 Chrome 进程，避免影响后续 Phase 1+2
+		kill_chrome()
+		await asyncio.sleep(2)
+
+
 async def process_external_sites(info, external_accounts):
-	"""处理 AnyRouter/AgentRouter 签到（httpx 直连，无需浏览器）"""
+	"""处理 AnyRouter/AgentRouter 签到: Phase 1 httpx 直连 → Phase 2 浏览器 OAuth 刷新"""
 	external_sites = {k: v for k, v in SITES.items() if v.get('provider') and not v.get('skip')}
 	if not external_sites or not external_accounts:
 		return
@@ -945,14 +1299,15 @@ async def process_external_sites(info, external_accounts):
 	log.info('[EXTERNAL] AnyRouter / AgentRouter 签到')
 	log.info('=' * 70)
 
+	failed_accounts = []  # [(acc, site_key, site_cfg), ...]
+
+	# === Phase 1: httpx 直连签到 ===
 	for site_key, site_cfg in external_sites.items():
 		provider = site_cfg['provider']
 		domain = site_cfg['domain']
-		sign_in_path = site_cfg.get('sign_in_path', '/api/user/sign_in')
 		needs_waf = site_cfg.get('needs_waf', False)
 		site_name = site_cfg.get('name', site_key)
 
-		# 筛选该 provider 的账号
 		site_accounts = [a for a in external_accounts if a.get('provider') == provider]
 		if not site_accounts:
 			continue
@@ -960,18 +1315,16 @@ async def process_external_sites(info, external_accounts):
 		log.info(f'  ──────────────────────────────────────────────────')
 		log.info(f'  [{site_name}] {domain} ({len(site_accounts)} 个账号)')
 
-		# WAF cookies（AnyRouter 需要，所有账号共用）
+		# WAF cookies
 		waf_cookies = None
 		if needs_waf:
-			# 检查 Node.js 是否可用
 			if not shutil.which('node'):
 				log.warning(f'    [FAIL] Node.js 未安装，无法解析 WAF')
 				for acc in site_accounts:
 					label = extract_label(acc.get('name', ''))
 					record(label, site_key, site_name=site_name, domain=domain,
 						   login_ok=False, checkin_ok=False, error='Node.js 未安装')
-					update_account_info(info, site_key, label, checkin_status='failed',
-										checkin_msg='Node.js 未安装')
+					update_account_info(info, site_key, label, checkin_status='failed', checkin_msg='Node.js 未安装')
 				save_site_info(info)
 				continue
 
@@ -983,120 +1336,20 @@ async def process_external_sites(info, external_accounts):
 					label = extract_label(acc.get('name', ''))
 					record(label, site_key, site_name=site_name, domain=domain,
 						   login_ok=False, checkin_ok=False, error='WAF cookies 获取失败')
-					update_account_info(info, site_key, label, checkin_status='failed',
-										checkin_msg='WAF cookies 获取失败')
+					update_account_info(info, site_key, label, checkin_status='failed', checkin_msg='WAF cookies 获取失败')
 				save_site_info(info)
 				continue
 			log.info(f'    [OK] WAF cookies 获取成功')
 
 		for acc in site_accounts:
-			name = acc.get('name', '')
-			label = extract_label(name)
-			session = acc.get('cookies', {}).get('session', '')
-			api_user = acc.get('api_user', '')
+			done = await _ext_try_checkin(acc, site_key, site_cfg, info, waf_cookies)
+			if not done:
+				failed_accounts.append((acc, site_key, site_cfg))
 
-			if not session or not api_user:
-				log.warning(f'    [{label}] 缺少 session 或 api_user，跳过')
-				continue
-
-			# 检查 site_info 中是否今日已完成
-			site_data = info.get(site_key, {})
-			acc_info = site_data.get('accounts', {}).get(label, {})
-			if acc_info.get('checkin_status') in ('success', 'already_checked') and acc_info.get('checkin_date') == info['_meta']['checkin_date']:
-				log.info(f'    [{label}] 今日已签到，跳过')
-				continue
-
-			all_cookies = {**(waf_cookies or {}), 'session': session}
-			headers = {
-				'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-				'Accept': 'application/json, text/plain, */*',
-				'new-api-user': api_user,
-				'Origin': domain,
-				'Referer': f'{domain}/',
-			}
-
-			try:
-				async with httpx.AsyncClient(timeout=30.0, verify=False, follow_redirects=True) as client:
-					# WAF 二次验证（AnyRouter）
-					if needs_waf:
-						resp_verify = await client.get(f'{domain}/api/user/self',
-													   headers=headers, cookies=all_cookies)
-						if '<script>' in resp_verify.text and 'arg1=' in resp_verify.text:
-							scripts = re.findall(r'<script[^>]*>([\s\S]*?)</script>', resp_verify.text, re.IGNORECASE)
-							if scripts:
-								solved = solve_waf_challenge(scripts[0])
-								if solved:
-									all_cookies.update(solved)
-									all_cookies.update(dict(resp_verify.cookies))
-
-					# 验证 session
-					resp = await client.get(f'{domain}/api/user/self',
-											headers=headers, cookies=all_cookies)
-					try:
-						user_data = resp.json()
-					except Exception:
-						log.warning(f'    [{label}] Session 无效（非 JSON 响应）')
-						record(label, site_key, site_name=site_name, domain=domain,
-							   login_ok=False, checkin_ok=False, error='Session 无效')
-						update_account_info(info, site_key, label, checkin_status='failed',
-											checkin_msg='Session 无效')
-						save_site_info(info)
-						continue
-
-					if not user_data.get('success'):
-						msg = user_data.get('message', 'Session 过期')
-						log.warning(f'    [{label}] {msg}')
-						record(label, site_key, site_name=site_name, domain=domain,
-							   login_ok=False, checkin_ok=False, error=msg)
-						update_account_info(info, site_key, label, checkin_status='failed',
-											checkin_msg=msg)
-						save_site_info(info)
-						continue
-
-					# 签到
-					checkin_headers = {**headers, 'Content-Type': 'application/json',
-									   'X-Requested-With': 'XMLHttpRequest'}
-					resp_checkin = await client.post(f'{domain}{sign_in_path}',
-													 headers=checkin_headers, cookies=all_cookies)
-					try:
-						result_data = resp_checkin.json()
-					except Exception:
-						log.warning(f'    [{label}] 签到响应异常')
-						record(label, site_key, site_name=site_name, domain=domain,
-							   login_ok=True, checkin_ok=False, error='签到响应异常')
-						update_account_info(info, site_key, label, checkin_status='failed',
-											checkin_msg='签到响应异常')
-						save_site_info(info)
-						continue
-
-					msg = result_data.get('msg', result_data.get('message', ''))
-					if result_data.get('ret') == 1 or result_data.get('code') == 0 or result_data.get('success'):
-						log.info(f'    [{label}] 签到成功! {msg}')
-						record(label, site_key, site_name=site_name, domain=domain,
-							   login_ok=True, checkin_ok=True, checkin_msg=msg)
-						update_account_info(info, site_key, label, checkin_status='success',
-											checkin_msg=msg, checkin_date=info['_meta']['checkin_date'])
-					elif '已' in msg or 'already' in msg.lower():
-						log.info(f'    [{label}] 今日已签到')
-						record(label, site_key, site_name=site_name, domain=domain,
-							   login_ok=True, checkin_ok=True, checkin_msg='今日已签到')
-						update_account_info(info, site_key, label, checkin_status='already_checked',
-											checkin_msg='今日已签到', checkin_date=info['_meta']['checkin_date'])
-					else:
-						log.warning(f'    [{label}] 签到失败: {msg}')
-						record(label, site_key, site_name=site_name, domain=domain,
-							   login_ok=True, checkin_ok=False, error=msg)
-						update_account_info(info, site_key, label, checkin_status='failed',
-											checkin_msg=msg)
-					save_site_info(info)
-
-			except Exception as e:
-				log.error(f'    [{label}] 异常: {e}')
-				record(label, site_key, site_name=site_name, domain=domain,
-					   login_ok=False, checkin_ok=False, error=str(e))
-				update_account_info(info, site_key, label, checkin_status='failed',
-									checkin_msg=str(e))
-				save_site_info(info)
+	# === Phase 2: 浏览器 OAuth 刷新过期 session ===
+	if failed_accounts:
+		log.info(f'\n  [INFO] {len(failed_accounts)} 个账号 session 过期，启动浏览器 OAuth 刷新...')
+		await _ext_browser_refresh_and_checkin(failed_accounts, info)
 
 
 async def process_account(account, info, debug_port=9222):

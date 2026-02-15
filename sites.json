@@ -180,12 +180,16 @@
     "name": "AnyRouter",
     "provider": "anyrouter",
     "sign_in_path": "/api/user/sign_in",
-    "needs_waf": true
+    "needs_waf": true,
+    "oauth_client_id": "8w2uZtoWH9AUXrZr1qeCEEmvXLafea3c",
+    "redirect_uri": "https://anyrouter.top/oauth/linuxdo"
   },
   "agentrouter": {
     "domain": "https://agentrouter.org",
     "name": "AgentRouter",
     "provider": "agentrouter",
-    "sign_in_path": "/api/user/sign_in"
+    "sign_in_path": "/api/user/sign_in",
+    "oauth_client_id": "KZUecGfhhDZMVnv8UtEdhOhf9sNOhqVX",
+    "redirect_uri": "https://agentrouter.org/oauth/linuxdo"
   }
 }
