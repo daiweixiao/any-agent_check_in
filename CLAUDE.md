@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-多站点自动签到系统，支持 AnyRouter/AgentRouter 及 26 个 new-api 公益站（活跃）+ 7 个跳过站点的自动登录和签到。使用 Playwright + 真实 Chrome 进行浏览器自动化（绕过 Cloudflare/WAF），httpx 处理 HTTP 请求和缓存签到。支持 4 个 LinuxDO 账号并行处理、Session 缓存加速、密码加密存储、GitHub Actions 云端运行。共探测 66 个站点。
+多站点自动签到系统，支持 AnyRouter/AgentRouter 及 27 个 new-api 公益站（活跃）+ 6 个跳过站点的自动登录和签到。使用 Playwright + 真实 Chrome 进行浏览器自动化（绕过 Cloudflare/WAF），httpx 处理 HTTP 请求和缓存签到。支持 4 个 LinuxDO 账号并行处理（Windows）或串行处理（Linux 服务器自动适配）、Session 缓存加速、密码加密存储、GitHub Actions 云端运行。共探测 66 个站点。
+
+站点配置外置到 `sites.json`（人工维护），运行时数据存储在 `site_info.json`（程序唯一执行数据源）。启动时自动 sync 两个文件，检测新增/移除站点和账号。
 
 ## 核心命令
 
@@ -23,7 +25,7 @@ playwright install chromium
 
 ### 运行签到
 ```bash
-# 多站点签到（26 站点 x 4 账号，主力脚本）
+# 多站点签到（27 站点 x 4 账号，主力脚本）
 python multi_site_checkin.py
 
 # AnyRouter/AgentRouter 签到（需要 update_sessions.json）
@@ -70,12 +72,17 @@ pre-commit run --all-files
 ### 核心模块
 
 **multi_site_checkin.py** - 多站点自动登录 + 签到（主力脚本）
-- 26 个 new-api 公益站 x 4 个 LinuxDO 账号
+- 27 个 new-api 公益站 x 4 个 LinuxDO 账号
+- 站点配置外置到 `sites.json`，运行数据存储在 `site_info.json`（唯一执行数据源）
+- 启动时 `sync_site_info()` 自动同步：检测新站点/新账号/移除站点，跨天重置签到状态
 - 两阶段执行：Phase 1 httpx 缓存直连 + Phase 2 浏览器 OAuth
-- 4 账号 asyncio.gather 并行（端口 9222-9225）
-- Session 缓存到 sessions_cache.json，过期自动删除并重新 OAuth
+- 4 账号 asyncio.gather 并行（Windows，端口 9222-9225）
+- Linux 串行模式：内存 < 3GB 自动切换，或 `--serial` 手动指定（单 Chrome 实例，端口 9222）
+- Linux headless：`--headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage`
+- Session/user_id/access_token 缓存在 site_info.json，过期自动删除并重新 OAuth
 - 真实 Chrome + CDP + Playwright 绕过 Cloudflare/WAF
 - OAuth 登录后从 localStorage 提取用户 ID 用于签到认证
+- 汇总报告按成功/失败/跳过分组，每站点标注账号状态
 - 输出详细结果到 checkin_results.json + logs/
 
 **checkin.py** - 主签到逻辑（GitHub Actions 用）
@@ -107,13 +114,14 @@ pre-commit run --all-files
 ### 关键设计模式
 
 **两阶段签到** (`multi_site_checkin.py`)
-- Phase 1: 用 sessions_cache.json 中的缓存 session，通过 httpx 直接调 API 签到（~30s 完成）
+- Phase 1: 用 site_info.json 中的缓存 session，通过 httpx 直接调 API 签到（~30s 完成）
 - Phase 2: 对无缓存或缓存过期的站点，启动浏览器走 OAuth 获取新 session
 - Session 过期检测：3xx 重定向、401、HTML 响应均视为过期
 
-**账号并行执行**
-- 4 个账号通过 asyncio.gather 同时执行
-- 每个账号独立 Chrome 实例（CDP 端口 9222-9225）
+**账号并行/串行执行**
+- Windows：4 个账号通过 asyncio.gather 同时执行，每个账号独立 Chrome 实例（CDP 端口 9222-9225）
+- Linux（阿里云等）：自动检测内存 < 3GB 切换串行模式，4 账号依次执行共用端口 9222；也可 `--serial` 手动指定
+- Linux Chrome：自动检测路径（`shutil.which`），headless + `--no-sandbox` + 反自动化检测
 - Session 文件写入使用 load-merge-save 原子模式（asyncio 单线程安全）
 
 **WAF 绕过策略** (`bypass_method`)
@@ -129,8 +137,9 @@ pre-commit run --all-files
 **Session 管理**
 - Session cookie 有效期约 30 天
 - 每次签到会刷新活跃状态
-- 缓存在 sessions_cache.json（含 session、user_id、access_token、更新日期）
-- 过期时自动删除缓存并走 OAuth 重新获取
+- 缓存在 site_info.json 各站点各账号条目中（含 session、user_id、access_token、更新日期）
+- 过期时自动清除缓存并走 OAuth 重新获取
+- 跨天自动重置 checkin_status 为 pending（保留 session）
 
 ### 配置结构
 
@@ -165,11 +174,18 @@ pre-commit run --all-files
 
 ### 添加新的 new-api 公益站
 
-1. 在 `multi_site_checkin.py` 的 `SITES` 字典中添加新站点配置
-2. 需要：域名、OAuth Client ID（可从 `/api/status` 获取）、签到路径
-3. 如果站点有 WAF，设置 `client_id: None`，脚本会在运行时通过浏览器获取
-4. 如需跳过某站点，添加 `'skip': True`
-5. 所有 new-api 站点使用相同的签到流程：OAuth 登录 → 获取用户 ID → POST /api/user/checkin
+1. 在 `sites.json` 中添加新站点配置：
+   ```json
+   "site_key": {
+     "domain": "https://example.com",
+     "name": "站点名称",
+     "client_id": "xxx"
+   }
+   ```
+2. `domain` 必填，`name` 和 `client_id` 可选（运行时自动从 `/api/status` 获取）
+3. 如需跳过某站点，添加 `"skip": true, "skip_reason": "原因"`
+4. 如需限制账号，添加 `"accounts": ["ZHnagsan", "caijijiji"]`（默认所有账号）
+5. 运行脚本时 `sync_site_info()` 自动检测新站点并创建 pending 条目
 
 ### 添加新平台支持（AnyRouter/AgentRouter 类型）
 
@@ -184,7 +200,7 @@ pre-commit run --all-files
 2. 查看 `QUICK_FIX.md` 快速修复指南
 3. 查看 `SESSION_TROUBLESHOOTING.md` 详细排查
 4. 检查 API 响应是否为 HTML（表示 session 过期）
-5. 删除 sessions_cache.json 中对应条目可强制重新 OAuth
+5. 在 site_info.json 中删除对应账号的 session 字段可强制重新 OAuth
 
 ### 修改签到逻辑
 
@@ -196,6 +212,16 @@ pre-commit run --all-files
   - 用户 ID: `get_user_id_from_page()` - 从 localStorage 提取
   - 结果处理: `handle_checkin_result()` - httpx 和浏览器共用
 - 注意区分不同 provider 的处理方式和认证要求
+
+## 数据文件关系
+
+```
+sites.json                    ← 人工维护（添加/删除/跳过站点）
+site_info.json                ← 程序唯一执行数据源（sync 自动同步 sites.json 变更）
+                                含 session、user_id、签到状态、站点探测结果等
+checkin_results.json          ← 程序自动追加（历史签到记录）
+logs/checkin_*.log            ← 程序自动生成（详细日志）
+```
 
 ## 代码风格
 

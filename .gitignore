@@ -32,6 +32,7 @@ checkin_results.json
 recheck_results.json
 site_probe_results.json
 sessions_cache.json
+site_info.json
 update_sessions.json
 generated_sites_config.txt
 session_fail_debug.png

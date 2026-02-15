@@ -43,7 +43,6 @@ CHROME_EXE = detect_chrome()
 DEBUG_PORT = 9222
 OAUTH_AUTHORIZE_URL = 'https://connect.linux.do/oauth2/authorize'
 RESULTS_FILE = 'checkin_results.json'
-SESSIONS_CACHE_FILE = 'sessions_cache.json'
 LOG_DIR = Path('logs')
 
 log: logging.Logger = logging.getLogger('checkin')
@@ -81,213 +80,28 @@ def timer(label: str):
 	log.debug(f'  [TIMER] {label}: {elapsed:.1f}s')
 
 # ===================== 站点配置 =====================
-SITES = {
-	'einzieg': {
-		'name': 'Einzieg API',
-		'domain': 'https://api.einzieg.site',
-		'client_id': 'aBambSqvDqCgTW8fCarJBeQji8M5RATf',
-		'checkin_path': '/api/user/checkin',
-	},
-	'moyu': {
-		'name': '摸鱼公益',
-		'domain': 'https://clove.cc.cd',
-		'client_id': 'Lr8C2Ny7JPr7c4YqysaDtVEqkO1a9eL7',
-		'checkin_path': '/api/user/checkin',
-	},
-	'laomo': {
-		'name': '老魔公益站',
-		'domain': 'https://api.2020111.xyz',
-		'client_id': 'gnyvfmAfXrnYrt9ierq3Onj1ADvdVmmm',
-		'checkin_path': '/api/user/checkin',
-	},
-	'wow': {
-		'name': 'WoW公益站',
-		'domain': 'https://linuxdoapi.223384.xyz',
-		'client_id': '3fcFoNvesssuyuFsvzBafjWivE4wvTwN',
-		'checkin_path': '/api/user/checkin',
-	},
-	'elysiver': {
-		'name': 'Elysiver公益站',
-		'domain': 'https://elysiver.h-e.top',
-		'client_id': None,  # 需要从浏览器获取（有 WAF）
-		'checkin_path': '/api/user/checkin',
-	},
-	'wong': {
-		'name': 'WONG公益站',
-		'domain': 'https://wzw.pp.ua',
-		'client_id': '451QxPCe4n9e7XrvzokzPcqPH9rUyTQF',
-		'checkin_path': '/api/user/checkin',
-	},
-	'yebsm': {
-		'name': '余额比寿命长',
-		'domain': 'https://new.123nhh.xyz',
-		'client_id': 'm17Y3zburaQfwCe53fWpae8tKPCuHXcy',
-		'checkin_path': '/api/user/checkin',
-	},
-	'hotaru': {
-		'name': '莹和兰',
-		'domain': 'https://api.hotaruapi.top',
-		'client_id': 'qVGkHnU8fLzJVEMgHCuNUCYifUQwePWn',
-		'checkin_path': '/api/user/checkin',
-		'skip': True,  # OAuth 回调重定向到 hotaruapi.com (域名配置错误)
-	},
-	'dev88': {
-		'name': 'dev88公益站',
-		'domain': 'https://api.dev88.tech',
-		'client_id': 'E8gcZeQkasYqaNiM2GwjUbV1ztY1owAc',
-		'checkin_path': '/api/user/checkin',  # 需 TL2
-	},
-	'kfc': {
-		'name': 'KFC公益站',
-		'domain': 'https://kfc-api.sxxe.net',
-		'client_id': 'UZgHjwXCE3HTrsNMjjEi0d8wpcj7d4Of',
-		'checkin_path': '/api/user/checkin',
-	},
-	'uibers': {
-		'name': 'uibers',
-		'domain': 'https://www.uibers.com',
-		'client_id': '41mEEby1c7Uy2r5e9iaErGE4SCbcqz3G',
-		'checkin_path': '/api/user/checkin',
-		'skip': True,  # OAuth 始终失败，原因未知
-	},
-	'duckcoding': {
-		'name': 'duckcoding黄鸭',
-		'domain': 'https://free.duckcoding.com',
-		'client_id': 'XNJfOdoSeXkcx80mDydoheJ0nZS4tjIf',
-		'checkin_path': '/api/user/checkin',
-	},
-	'duckcoding_jp': {
-		'name': 'duckcoding-jp',
-		'domain': 'https://jp.duckcoding.com',
-		'client_id': 'MGPwGpfcyKGHsdnsY0BMpt6VZPrkxOBd',
-		'checkin_path': '/api/user/checkin',
-	},
-	'xiaodai': {
-		'name': '小呆API',
-		'domain': 'https://new.184772.xyz',
-		'client_id': 'Bl5uJRVkjxVpGC2MDw3UZdzb89RMguVa',
-		'checkin_path': '/api/user/checkin',
-		'skip': True,  # 重定向到 api.daiju.live，与 xiaodai_base 重复
-	},
-	'xiaodai_base': {
-		'name': '小呆API-base',
-		'domain': 'https://api.daiju.live',
-		'client_id': 'Bl5uJRVkjxVpGC2MDw3UZdzb89RMguVa',
-		'checkin_path': '/api/user/checkin',
-	},
-	'embedding': {
-		'name': 'Embedding公益站',
-		'domain': 'https://router.tumuer.me',
-		'client_id': 'L3bf5EA8RoJJObIJ2W7g1CaVAZNEqM4M',
-		'checkin_path': '/api/user/checkin',
-	},
-	'huan': {
-		'name': 'Huan API',
-		'domain': 'https://ai.huan666.de',
-		'client_id': 'FNvJFnlfpfDM2mKDp8HTElASdjEwUriS',
-		'checkin_path': '/api/user/checkin',
-	},
-	'muyuan': {
-		'name': '慕鸢公益站',
-		'domain': 'https://newapi.linuxdo.edu.rs',
-		'client_id': 'rxyZeu4Wg8HNzwaG6YCj6OnFvap7ZfRU',
-		'checkin_path': '/api/user/checkin',
-	},
-	'thatapi': {
-		'name': 'ThatAPI',
-		'domain': 'https://gyapi.zxiaoruan.cn',
-		'client_id': 'doAqU5TVU6L7sXudST9MQ102aaJObESS',
-		'checkin_path': '/api/user/checkin',  # 需 TL2
-	},
-	'freestyle': {
-		'name': '佬友freestyle',
-		'domain': 'https://api.freestyle.cc.cd',
-		'client_id': 'yCN8PmzMMcdOpuZp8UVQh7dxywofhpc2',
-		'checkin_path': '/api/user/checkin',
-	},
-	'newapi': {
-		'name': 'New API',
-		'domain': 'https://openai.api-test.us.ci',
-		'client_id': '65Lj7gYXHoSAVDDUq6Plb11thoqAV1t7',
-		'checkin_path': '/api/user/checkin',
-	},
-	'mtu': {
-		'name': 'MTU公益',
-		'domain': 'https://jiuuij.de5.net',
-		'client_id': 'Sof7UgAZT2JTbXTlz8djq3eACVf2alFf',
-		'checkin_path': '/api/user/checkin',
-		'skip': True,  # 需 TL2，所有账号均不满足
-	},
-	'npc': {
-		'name': 'NPC API',
-		'domain': 'https://npcodex.kiroxubei.tech',
-		'client_id': 'APUcB3LChvSGi3FmkODZx6Ij2038mkHY',
-		'checkin_path': '/api/user/checkin',
-	},
-	'jarvis': {
-		'name': 'Jarvis API',
-		'domain': 'https://ai.ctacy.cc',
-		'client_id': 'vtdgTJlFRj6WZjCfjuNucKeNXn5rplzV',
-		'checkin_path': '/api/user/checkin',
-	},
-	'yunduan': {
-		'name': '云端API',
-		'domain': 'https://cloudapi.wdyu.eu.cc',
-		'client_id': 'RLuQBBcU7LkZmed1mvqiktf2O5lhjbVv',
-		'checkin_path': '/api/user/checkin',
-	},
-	'ibsgss': {
-		'name': 'ibsgss公益站',
-		'domain': 'https://codex.ibsgss.uk',
-		'client_id': 'F3kKRQ29SJGivfhtIpjE0W0tAyxbvR2X',
-		'checkin_path': '/api/user/checkin',
-	},
-	'hoshino': {
-		'name': '星野Ai新站',
-		'domain': 'https://api.hoshino.edu.rs',
-		'client_id': 'XPXmWksr3NcH2aiz0MgqK5jtEmfdfZ0Q',
-		'checkin_path': '/api/user/checkin',
-	},
-	'zer0by': {
-		'name': 'Zer0by公益站',
-		'domain': 'https://new-api.oseeue.com',
-		'client_id': '03yHVaQuD9VhIZM63IL8xHne3wiCGxCI',
-		'checkin_path': '/api/user/checkin',
-	},
-	'oldapi': {
-		'name': 'Old API',
-		'domain': 'https://sakuradori.dpdns.org',
-		'client_id': 'QSRbjIGtYWCdyd0SPEiXGN4HlK4k0n7Z',
-		'checkin_path': '/api/user/checkin',
-	},
-	'nanohajimi': {
-		'name': '纳米哈基米',
-		'domain': 'https://free.nanohajimi.mom',
-		'client_id': 'svkUqtRyhOJMULQ1Zfnfhvv9ALSnANhf',
-		'checkin_path': '/api/user/checkin',
-	},
-	'lmq': {
-		'name': '略貌取神',
-		'domain': 'https://lmq.kangnaixi.xyz',
-		'client_id': 'shJeHLhXpkDmjyuMOujQCz8FkRlkVcW2',
-		'checkin_path': '/api/user/checkin',
-		'skip': True,  # 签到返回"权限不足"，多账号均不满足 TL 要求
-	},
-	'liuge': {
-		'name': '六哥API',
-		'domain': 'https://api.crisxie.top',
-		'client_id': 'tlowvyTdQapFFeB0sm6plyWOl2M354cW',
-		'checkin_path': '/api/user/checkin',
-		'skip': True,  # 需 TL2，签到返回"权限不足"
-	},
-	'agentify': {
-		'name': '不知名公益站',
-		'domain': 'https://api.agentify.top',
-		'client_id': 'UudCcOSQPmz3EHp2EAH5JjHo6jMcVoaZ',
-		'checkin_path': '/api/user/checkin',
-		'skip': True,  # 签到返回"权限不足"
-	},
-}
+SITES_FILE = 'sites.json'
+SITE_INFO_FILE = 'site_info.json'
+
+
+def load_sites():
+	"""从 sites.json 加载站点配置"""
+	try:
+		with open(SITES_FILE, 'r', encoding='utf-8') as f:
+			sites = json.load(f)
+		for key, cfg in sites.items():
+			cfg.setdefault('name', key)
+			cfg.setdefault('checkin_path', '/api/user/checkin')
+		return sites
+	except FileNotFoundError:
+		print(f'[ERROR] 站点配置文件不存在: {SITES_FILE}')
+		sys.exit(1)
+	except json.JSONDecodeError as e:
+		print(f'[ERROR] 站点配置文件格式错误: {e}')
+		sys.exit(1)
+
+
+SITES = load_sites()
 
 # ===================== LinuxDO 账号 =====================
 LINUXDO_ACCOUNTS = [
@@ -310,51 +124,239 @@ def kill_chrome():
 					   capture_output=True, encoding='gbk', errors='ignore')
 
 
-def record(account_label, site_key, **kwargs):
+def record(account_label, site_key, site_name='', domain='', **kwargs):
 	"""记录一条结果"""
 	entry = {
 		'account': account_label,
-		'site': SITES[site_key]['name'],
+		'site': site_name or site_key,
 		'site_key': site_key,
-		'domain': SITES[site_key]['domain'],
+		'domain': domain,
 		'time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
 		**kwargs,
 	}
 	results.append(entry)
-	# 实时保存
 	with open(RESULTS_FILE, 'w', encoding='utf-8') as f:
 		json.dump(results, f, indent=2, ensure_ascii=False)
 	return entry
 
 
-# ===================== Session 缓存 =====================
 
-def load_sessions():
-	"""从缓存文件加载 sessions"""
+# ===================== site_info.json 管理 =====================
+
+def load_site_info():
+	"""加载 site_info.json，不存在则返回空结构"""
 	try:
-		with open(SESSIONS_CACHE_FILE, 'r', encoding='utf-8') as f:
+		with open(SITE_INFO_FILE, 'r', encoding='utf-8') as f:
 			return json.load(f)
 	except (FileNotFoundError, json.JSONDecodeError):
-		return {}
+		return {'_meta': {'last_run': None, 'checkin_date': None}}
 
 
-def save_session_entry(label, site_key, session_data):
-	"""保存单个 session（load-merge-save，asyncio 单线程下原子安全）"""
-	sessions = load_sessions()
-	if label not in sessions:
-		sessions[label] = {}
-	sessions[label][site_key] = session_data
-	with open(SESSIONS_CACHE_FILE, 'w', encoding='utf-8') as f:
-		json.dump(sessions, f, indent=2, ensure_ascii=False)
+def save_site_info(info):
+	"""保存 site_info.json，自动更新摘要统计"""
+	info['_meta']['last_run'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+	# 计算摘要
+	total = done = success = already = failed = pending = skipped_sites = removed_sites = 0
+	for key, val in info.items():
+		if key == '_meta' or not isinstance(val, dict):
+			continue
+		if val.get('_removed'):
+			removed_sites += 1
+			continue
+		if val.get('skip'):
+			skipped_sites += 1
+			continue
+		for acc_val in val.get('accounts', {}).values():
+			if acc_val.get('_excluded'):
+				continue
+			total += 1
+			s = acc_val.get('checkin_status', 'pending')
+			if s == 'success':
+				done += 1; success += 1
+			elif s == 'already_checked':
+				done += 1; already += 1
+			elif s == 'failed':
+				done += 1; failed += 1
+			else:
+				pending += 1
+	active_sites = sum(1 for k, v in info.items() if k != '_meta' and isinstance(v, dict) and not v.get('skip') and not v.get('_removed'))
+	info['_meta']['summary'] = {
+		'total_sites': active_sites + skipped_sites,
+		'active_sites': active_sites,
+		'skipped_sites': skipped_sites,
+		'accounts': len(LINUXDO_ACCOUNTS),
+		'total_tasks': total,
+		'done': done,
+		'success': success,
+		'already_checked': already,
+		'failed': failed,
+		'pending': pending,
+	}
+	with open(SITE_INFO_FILE, 'w', encoding='utf-8') as f:
+		json.dump(info, f, indent=2, ensure_ascii=False)
 
 
-def delete_session_entry(label, site_key):
-	"""删除过期 session"""
-	sessions = load_sessions()
-	if label in sessions and site_key in sessions[label]:
-		del sessions[label][site_key]
-		with open(SESSIONS_CACHE_FILE, 'w', encoding='utf-8') as f:
-			json.dump(sessions, f, indent=2, ensure_ascii=False)
+def sync_site_info(sites):
+	"""同步 sites.json → site_info.json。site_info 是唯一执行数据源。
+	- 新站点 → 创建条目 + pending
+	- 新账号（sites.json 扩大 accounts）→ 创建 pending
+	- 已移除站点（info 有但 sites.json 没有）→ 标记 _removed
+	- 字段保护：note、探测结果（alive/has_cf/version 等）不被覆盖
+	- 跨天重置：checkin_status → pending（保留 session）
+	"""
+	info = load_site_info()
+	today = datetime.now().strftime('%Y-%m-%d')
+	info['_meta']['checkin_date'] = today
+	all_labels = [a['label'] for a in LINUXDO_ACCOUNTS]
+
+	changes = []
+
+	for site_key, cfg in sites.items():
+		# 该站点允许哪些账号（无 accounts 字段 = 全部）
+		allowed = cfg.get('accounts', all_labels)
+		# 过滤无效 label
+		invalid = [l for l in allowed if l not in all_labels]
+		if invalid:
+			changes.append(f'  [WARN] {cfg.get("name", site_key)}: 未知账号 {invalid}')
+		allowed = [l for l in allowed if l in all_labels]
+
+		if site_key not in info or site_key == '_meta':
+			# === 新站点 ===
+			info[site_key] = {
+				'domain': cfg['domain'],
+				'name': cfg.get('name', site_key),
+				'client_id': cfg.get('client_id'),
+				'checkin_path': cfg.get('checkin_path', '/api/user/checkin'),
+				'alive': None, 'has_cf': None, 'has_waf': None,
+				'version': None, 'checkin_enabled': None, 'min_trust_level': None,
+				'note': cfg.get('skip_reason', ''),
+			}
+			if cfg.get('skip'):
+				info[site_key]['skip'] = True
+				info[site_key]['skip_reason'] = cfg.get('skip_reason', '')
+			else:
+				info[site_key]['accounts'] = {}
+				for lbl in allowed:
+					info[site_key]['accounts'][lbl] = {'checkin_status': 'pending'}
+			changes.append(f'  [NEW] {cfg.get("name", site_key)}')
+		else:
+			# === 已存在站点：同步可覆盖字段，保护 note/探测结果 ===
+			entry = info[site_key]
+			entry.pop('_removed', None)  # 恢复曾被移除的站点
+			entry['domain'] = cfg['domain']
+			entry['name'] = cfg.get('name', site_key)
+			if cfg.get('client_id'):
+				entry['client_id'] = cfg['client_id']
+			entry['checkin_path'] = cfg.get('checkin_path', '/api/user/checkin')
+
+			if cfg.get('skip'):
+				entry['skip'] = True
+				entry['skip_reason'] = cfg.get('skip_reason', '')
+			else:
+				entry.pop('skip', None)
+				entry.pop('skip_reason', None)
+				accounts = entry.setdefault('accounts', {})
+
+				# 检查新增账号
+				for lbl in allowed:
+					if lbl not in accounts:
+						accounts[lbl] = {'checkin_status': 'pending'}
+						changes.append(f'  [NEW ACCOUNT] {entry.get("name", site_key)}: {lbl}')
+					else:
+						acc_info = accounts[lbl]
+						# 跨天重置
+						if acc_info.get('checkin_date') == today and acc_info.get('checkin_status') in ('success', 'already_checked'):
+							pass
+						else:
+							acc_info['checkin_status'] = 'pending'
+
+				# 移除不再允许的账号（标记而非删除，保留历史数据）
+				for lbl in list(accounts):
+					if lbl not in allowed:
+						accounts[lbl]['_excluded'] = True
+					else:
+						accounts[lbl].pop('_excluded', None)
+
+	# 标记已从 sites.json 移除的站点
+	for site_key in list(info):
+		if site_key != '_meta' and isinstance(info[site_key], dict) and site_key not in sites:
+			if not info[site_key].get('_removed'):
+				info[site_key]['_removed'] = True
+				changes.append(f'  [REMOVED] {info[site_key].get("name", site_key)}')
+
+	save_site_info(info)
+
+	if changes:
+		log.info(f'  [SYNC] 检测到变更:')
+		for c in changes:
+			log.info(c)
+
+	return info
+
+
+def update_site_info(info, site_key, **kwargs):
+	"""更新站点级信息（client_id, alive, has_cf, version 等）"""
+	if site_key in info:
+		info[site_key].update(kwargs)
+		save_site_info(info)
+
+
+def update_account_info(info, site_key, label, **kwargs):
+	"""更新某站点某账号的信息（session, checkin_status 等）"""
+	if site_key in info and 'accounts' in info[site_key]:
+		acc = info[site_key]['accounts'].setdefault(label, {})
+		acc.update(kwargs)
+		if 'checkin_status' in kwargs and kwargs['checkin_status'] != 'pending':
+			acc['checkin_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+		save_site_info(info)
+
+
+def get_account_info(info, site_key, label):
+	"""获取某站点某账号的信息"""
+	if site_key in info and 'accounts' in info[site_key]:
+		return info[site_key]['accounts'].get(label, {})
+	return {}
+
+
+def is_checkin_done_today(info, site_key, label):
+	"""判断某账号在某站点今天是否已签到成功"""
+	today = datetime.now().strftime('%Y-%m-%d')
+	acc = get_account_info(info, site_key, label)
+	return (acc.get('checkin_date') == today and
+			acc.get('checkin_status') in ('success', 'already_checked'))
+
+
+async def resolve_sites(info):
+	"""补全 info 中缺失的 client_id，优先用缓存，否则 httpx 获取 /api/status"""
+	changed = False
+
+	for site_key, site_data in info.items():
+		if site_key == '_meta' or not isinstance(site_data, dict):
+			continue
+		if site_data.get('skip') or site_data.get('_removed') or site_data.get('client_id'):
+			continue
+
+		# httpx 获取 /api/status
+		try:
+			async with httpx.AsyncClient(verify=False, timeout=15, follow_redirects=True) as client:
+				resp = await client.get(f'{site_data["domain"]}/api/status')
+				if resp.status_code == 200:
+					d = resp.json().get('data', {})
+					cid = d.get('linuxdo_client_id', '')
+					if cid:
+						update_site_info(info, site_key,
+							client_id=cid,
+							name=d.get('system_name', '') or site_data.get('name', site_key),
+							version=d.get('version', ''),
+							checkin_enabled=d.get('checkin_enabled'),
+							min_trust_level=d.get('min_trust_level'),
+						)
+						changed = True
+						log.info(f'  [META] {site_key}: 自动获取 client_id={cid[:12]}...')
+		except Exception:
+			pass
+
+	return changed
 
 
 async def do_checkin_via_httpx(domain, checkin_path, session, user_id=None, access_token=None):
@@ -405,8 +407,12 @@ async def do_checkin_via_httpx(domain, checkin_path, session, user_id=None, acce
 		return {'error': str(e)[:80]}
 
 
-def handle_checkin_result(label, site_key, checkin_result, session_value):
+def handle_checkin_result(label, site_key, checkin_result, session_value, info, method='httpx'):
 	"""统一处理签到结果（httpx 和浏览器共用）。返回 True 表示有效成功。"""
+	today = datetime.now().strftime('%Y-%m-%d')
+	site_data = info.get(site_key, {})
+	sn = site_data.get('name', site_key)
+	dm = site_data.get('domain', '')
 	if checkin_result and checkin_result.get('method') == 'GET':
 		log.debug(f'    [INFO] POST 404, 降级为 GET 成功')
 	log.debug(f'    签到结果: {json.dumps(checkin_result, ensure_ascii=False)}')
@@ -416,13 +422,19 @@ def handle_checkin_result(label, site_key, checkin_result, session_value):
 		quota = data.get('quota_awarded') or data.get('quota', '?')
 		msg = checkin_result.get('message', '') or '签到成功'
 		log.info(f'    [OK] {msg} (额度: {quota})')
-		record(label, site_key, login_ok=True, checkin_ok=True,
+		record(label, site_key, site_name=sn, domain=dm, login_ok=True, checkin_ok=True,
 			   session=session_value[:50], checkin_msg=msg, quota=quota)
+		update_account_info(info, site_key, label,
+			checkin_status='success', checkin_date=today,
+			checkin_method=method, checkin_msg=msg, quota=quota)
 		return True
 	elif checkin_result and checkin_result.get('error'):
 		log.warning(f'    [FAIL] {checkin_result["error"]}')
-		record(label, site_key, login_ok=True, checkin_ok=False,
+		record(label, site_key, site_name=sn, domain=dm, login_ok=True, checkin_ok=False,
 			   session=session_value[:50], error=checkin_result['error'])
+		update_account_info(info, site_key, label,
+			checkin_status='failed', checkin_date=today,
+			checkin_method=method, error=checkin_result['error'])
 		return False
 	else:
 		msg = checkin_result.get('message', '未知') if checkin_result else '无响应'
@@ -430,12 +442,18 @@ def handle_checkin_result(label, site_key, checkin_result, session_value):
 		is_already = any(kw in msg for kw in already_kws)
 		if is_already:
 			log.info(f'    [INFO] {msg}')
-			record(label, site_key, login_ok=True, checkin_ok=False,
+			record(label, site_key, site_name=sn, domain=dm, login_ok=True, checkin_ok=False,
 				   session=session_value[:50], checkin_msg=msg, already_checked=True)
+			update_account_info(info, site_key, label,
+				checkin_status='already_checked', checkin_date=today,
+				checkin_method=method, checkin_msg=msg)
 		else:
 			log.info(f'    [INFO] {msg}')
-			record(label, site_key, login_ok=True, checkin_ok=False,
+			record(label, site_key, site_name=sn, domain=dm, login_ok=True, checkin_ok=False,
 				   session=session_value[:50], checkin_msg=msg)
+			update_account_info(info, site_key, label,
+				checkin_status='failed', checkin_date=today,
+				checkin_method=method, checkin_msg=msg)
 		return is_already
 
 
@@ -829,47 +847,81 @@ async def get_user_id_from_page(page, domain):
 		return None
 
 
-async def process_account(account, debug_port=9222):
+def get_active_sites(info, label):
+	"""从 info 中获取某账号应处理的活跃站点列表: [(site_key, site_data), ...]"""
+	result = []
+	for site_key, site_data in info.items():
+		if site_key == '_meta' or not isinstance(site_data, dict):
+			continue
+		if site_data.get('skip') or site_data.get('_removed'):
+			continue
+		accounts = site_data.get('accounts', {})
+		acc = accounts.get(label)
+		if not acc or acc.get('_excluded'):
+			continue
+		result.append((site_key, site_data))
+	return result
+
+
+async def process_account(account, info, debug_port=9222):
 	"""处理单个 LinuxDO 账号在所有站点的登录和签到"""
 	from playwright.async_api import async_playwright
 
 	label = account['label']
+	today = datetime.now().strftime('%Y-%m-%d')
 	log.info(f'\n{"=" * 70}')
 	log.info(f'[ACCOUNT] {label} ({account["login"]})')
 	log.info(f'{"=" * 70}')
 
-	# === Phase 1: httpx 快速签到（缓存 session）===
-	sessions = load_sessions()
-	acc_sessions = sessions.get(label, {})
+	# === Phase 1: httpx 快速签到（使用 site_info 中缓存的 session）===
 	handled_sites = set()
 	cache_hits = 0
+	active_sites = get_active_sites(info, label)
 
-	for site_key, site_cfg in SITES.items():
-		if site_cfg.get('skip'):
+	for site_key, site_data in active_sites:
+		site_name = site_data.get('name', site_key)
+		domain = site_data['domain']
+		# 其他账号已发现站点挂了 → 跳过（并行共享 info）
+		if site_data.get('alive') == False:
+			log.debug(f'  [{site_name}] 站点不可达，跳过')
+			record(label, site_key, site_name=site_name, domain=domain,
+				login_ok=False, checkin_ok=False, error='站点无法连接')
+			update_account_info(info, site_key, label,
+				checkin_status='failed', checkin_date=today, error='站点无法连接')
+			handled_sites.add(site_key)
 			continue
-		cached = acc_sessions.get(site_key)
-		if not cached or not cached.get('session'):
+		# 今日已签到 → 跳过
+		if is_checkin_done_today(info, site_key, label):
+			log.info(f'  [{site_name}] 今日已签到，跳过')
+			handled_sites.add(site_key)
+			continue
+		# 从 site_info 获取缓存的 session
+		acc_info = get_account_info(info, site_key, label)
+		session = acc_info.get('session')
+		if not session:
 			continue
 
-		site_name = site_cfg['name']
-		domain = site_cfg['domain']
-		checkin_path = site_cfg['checkin_path']
+		checkin_path = site_data.get('checkin_path', '/api/user/checkin')
 
 		try:
 			log.info(f'  [{site_name}] httpx 签到...')
 			result = await do_checkin_via_httpx(
-				domain, checkin_path, cached['session'],
-				user_id=cached.get('user_id'), access_token=cached.get('access_token'),
+				domain, checkin_path, session,
+				user_id=acc_info.get('user_id'), access_token=acc_info.get('access_token'),
 			)
 
 			if result.get('expired'):
 				log.debug(f'    [CACHE] session 已过期, 需重新 OAuth')
-				delete_session_entry(label, site_key)
+				update_account_info(info, site_key, label, session=None, session_updated=None)
 				continue
 
 			if result.get('error') and '站点无法连接' in result['error']:
 				log.warning(f'    [FAIL] {result["error"]}')
-				record(label, site_key, login_ok=False, checkin_ok=False, error=result['error'])
+				record(label, site_key, site_name=site_name, domain=domain,
+					login_ok=False, checkin_ok=False, error=result['error'])
+				update_account_info(info, site_key, label,
+					checkin_status='failed', checkin_date=today, error=result['error'])
+				update_site_info(info, site_key, alive=False)
 				handled_sites.add(site_key)
 				continue
 
@@ -877,7 +929,7 @@ async def process_account(account, debug_port=9222):
 				log.debug(f'    [CACHE] httpx 错误: {result["error"]}, 降级到浏览器')
 				continue
 
-			handle_checkin_result(label, site_key, result, cached['session'])
+			handle_checkin_result(label, site_key, result, session, info, method='httpx')
 			handled_sites.add(site_key)
 			cache_hits += 1
 		except Exception as e:
@@ -887,13 +939,9 @@ async def process_account(account, debug_port=9222):
 		log.info(f'  [CACHE] {cache_hits} 个站点通过缓存完成签到')
 
 	# 检查是否还有需要浏览器的站点
-	remaining = [k for k, v in SITES.items() if not v.get('skip') and k not in handled_sites]
+	remaining = [k for k, _ in active_sites if k not in handled_sites]
 	if not remaining:
 		log.info(f'  [OK] 所有站点已通过缓存完成!')
-		# 跳过的站点仍需记录
-		for site_key, site_cfg in SITES.items():
-			if site_cfg.get('skip'):
-				record(label, site_key, login_ok=False, checkin_ok=False, error='已标记跳过')
 		return
 
 	log.info(f'  需要浏览器 OAuth: {len(remaining)} 个站点\n')
@@ -925,10 +973,10 @@ async def process_account(account, debug_port=9222):
 		log.error('  [FAIL] Chrome CDP 未就绪')
 		proc.terminate()
 		shutil.rmtree(tmpdir, ignore_errors=True)
-		for site_key, sc in SITES.items():
+		for site_key, site_data in active_sites:
 			if site_key not in handled_sites:
-				record(label, site_key, login_ok=False, checkin_ok=False,
-					   error='已标记跳过' if sc.get('skip') else 'Chrome CDP 未就绪')
+				record(label, site_key, site_name=site_data.get('name', site_key),
+					domain=site_data['domain'], login_ok=False, checkin_ok=False, error='Chrome CDP 未就绪')
 		return
 
 	async with async_playwright() as p:
@@ -943,10 +991,10 @@ async def process_account(account, debug_port=9222):
 				logged_in = await do_login(page, account)
 			if not logged_in:
 				log.error(f'  [FAIL] LinuxDO 登录失败，跳过所有站点')
-				for site_key, sc in SITES.items():
+				for site_key, site_data in active_sites:
 					if site_key not in handled_sites:
-						record(label, site_key, login_ok=False, checkin_ok=False,
-							   error='已标记跳过' if sc.get('skip') else 'LinuxDO 登录失败')
+						record(label, site_key, site_name=site_data.get('name', site_key),
+							domain=site_data['domain'], login_ok=False, checkin_ok=False, error='LinuxDO 登录失败')
 				await page.close()
 				await browser.close()
 				proc.terminate()
@@ -957,36 +1005,37 @@ async def process_account(account, debug_port=9222):
 
 			# === 逐站点 OAuth + 签到 ===
 			consecutive_oauth_fails = 0
-			MAX_CONSECUTIVE_FAILS = 5  # 连续 N 次 OAuth 失败则跳过剩余站点
+			MAX_CONSECUTIVE_FAILS = 5
 
-			for site_key, site_cfg in SITES.items():
-				site_name = site_cfg['name']
-				domain = site_cfg['domain']
-				client_id = site_cfg['client_id']
-				checkin_path = site_cfg['checkin_path']
-
-				# 跳过已知无效站点或已通过缓存处理的站点
-				if site_cfg.get('skip'):
-					log.debug(f'  [SKIP] {site_name} (已标记跳过)')
-					record(label, site_key, login_ok=False, checkin_ok=False, error='已标记跳过')
-					continue
+			for site_key, site_data in active_sites:
+				site_name = site_data.get('name', site_key)
+				domain = site_data['domain']
+				client_id = site_data.get('client_id')
+				checkin_path = site_data.get('checkin_path', '/api/user/checkin')
 
 				if site_key in handled_sites:
+					continue
+
+				# 今日已签到跳过（Phase 2 重检查）
+				if is_checkin_done_today(info, site_key, label):
+					log.debug(f'  [SKIP] {site_name} 今日已签到')
+					handled_sites.add(site_key)
 					continue
 
 				# 连续 OAuth 失败检测
 				if consecutive_oauth_fails >= MAX_CONSECUTIVE_FAILS:
 					log.warning(f'  [SKIP] 连续 {consecutive_oauth_fails} 次 OAuth 失败，跳过剩余站点')
-					for sk, sc in list(SITES.items())[list(SITES.keys()).index(site_key):]:
-						if not sc.get('skip') and sk not in handled_sites:
-							record(label, sk, login_ok=False, checkin_ok=False, error=f'跳过(连续{consecutive_oauth_fails}次OAuth失败)')
+					for sk, sd in active_sites:
+						if sk not in handled_sites:
+							record(label, sk, site_name=sd.get('name', sk), domain=sd['domain'],
+								login_ok=False, checkin_ok=False, error=f'跳过(连续{consecutive_oauth_fails}次OAuth失败)')
 					break
 
 				log.info(f'  {"─" * 50}')
 				log.info(f'  [{site_name}] {domain}')
 
 				try:
-					# 如果 client_id 未知（如 Elysiver），先通过浏览器获取
+					# 如果 client_id 未知，先通过浏览器获取
 					if not client_id:
 						log.debug(f'    获取站点配置...')
 						status_data = await get_site_config_via_browser(page, domain)
@@ -997,13 +1046,19 @@ async def process_account(account, debug_port=9222):
 							log.debug(f'    签到功能: {"开启" if checkin_enabled else "关闭"}')
 							if not client_id:
 								log.warning(f'    [SKIP] 无 LinuxDO OAuth')
-								record(label, site_key, login_ok=False, checkin_ok=False, error='无 LinuxDO OAuth')
+								record(label, site_key, site_name=site_name, domain=domain,
+									login_ok=False, checkin_ok=False, error='无 LinuxDO OAuth')
 								continue
-							# 更新配置
-							SITES[site_key]['client_id'] = client_id
+							update_site_info(info, site_key,
+								client_id=client_id, alive=True,
+								version=status_data.get('version', ''),
+								checkin_enabled=checkin_enabled,
+								min_trust_level=status_data.get('min_trust_level'),
+							)
 						else:
 							log.warning(f'    [FAIL] 无法获取站点配置')
-							record(label, site_key, login_ok=False, checkin_ok=False, error='无法访问站点（WAF/CF）')
+							record(label, site_key, site_name=site_name, domain=domain,
+								login_ok=False, checkin_ok=False, error='无法访问站点（WAF/CF）')
 							continue
 
 					# OAuth 登录
@@ -1013,16 +1068,19 @@ async def process_account(account, debug_port=9222):
 
 					if not session_value:
 						log.warning(f'    [FAIL] 登录失败')
-						record(label, site_key, login_ok=False, checkin_ok=False, error='OAuth 获取 session 失败')
+						record(label, site_key, site_name=site_name, domain=domain,
+							login_ok=False, checkin_ok=False, error='OAuth 获取 session 失败')
+						update_account_info(info, site_key, label,
+							checkin_status='failed', checkin_date=today, error='OAuth 获取 session 失败')
 						consecutive_oauth_fails += 1
 						continue
 
-					consecutive_oauth_fails = 0  # 成功则重置计数
+					consecutive_oauth_fails = 0
 					log.info(f'    [OK] 登录成功! Session: {session_value[:40]}...')
 					if access_token:
 						log.debug(f'    Access Token: {access_token[:30]}...')
 
-					# 获取用户 ID（作为 access_token 的备用方案）
+					# 获取用户 ID
 					user_id = None
 					if not access_token:
 						log.debug(f'    --- 获取用户 ID ---')
@@ -1032,17 +1090,13 @@ async def process_account(account, debug_port=9222):
 						else:
 							log.warning(f'    [WARN] 未获取到用户 ID 和 access_token，尝试直接签到')
 
-					# 保存 session 到缓存
-					save_session_entry(label, site_key, {
-						'session': session_value,
-						'user_id': user_id,
-						'access_token': access_token,
-						'updated': datetime.now().strftime('%Y-%m-%d'),
-					})
+					# 保存 session 到 site_info
+					update_account_info(info, site_key, label,
+						session=session_value, user_id=user_id, access_token=access_token,
+						session_updated=today)
 
 					# 签到
 					log.info(f'    --- 签到 ---')
-					# 确保在正确域名下
 					try:
 						await page.goto(f'{domain}/', wait_until='domcontentloaded', timeout=15000)
 						await asyncio.sleep(2)
@@ -1051,14 +1105,21 @@ async def process_account(account, debug_port=9222):
 
 					with timer(f'{label}/{site_name} 签到'):
 						checkin_result = await do_checkin_via_browser(page, domain, checkin_path, user_id=user_id, access_token=access_token)
-					handle_checkin_result(label, site_key, checkin_result, session_value)
+					handle_checkin_result(label, site_key, checkin_result, session_value, info, method='browser')
 
 				except Exception as e:
 					log.error(f'    [ERROR] 站点处理异常: {e}', exc_info=True)
-					record(label, site_key, login_ok=False, checkin_ok=False, error=f'异常: {str(e)[:80]}')
+					record(label, site_key, site_name=site_name, domain=domain,
+						login_ok=False, checkin_ok=False, error=f'异常: {str(e)[:80]}')
 
-			await page.close()
-			await browser.close()
+			try:
+				await asyncio.wait_for(page.close(), timeout=5)
+			except Exception:
+				pass
+			try:
+				await asyncio.wait_for(browser.close(), timeout=5)
+			except Exception:
+				pass
 		except Exception as e:
 			log.error(f'  [ERROR] 浏览器异常: {e}', exc_info=True)
 
@@ -1082,9 +1143,7 @@ async def main():
 
 	log.info('=' * 70)
 	log.info('多站点自动登录 + 签到')
-	active_sites = sum(1 for s in SITES.values() if not s.get('skip'))
-	skip_sites = len(SITES) - active_sites
-	log.info(f'站点: {active_sites} 个 (跳过 {skip_sites} 个) | 账号: {len(LINUXDO_ACCOUNTS)} 个')
+	log.info(f'站点配置: {SITES_FILE} ({len(SITES)} 个)')
 	log.info(f'时间: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
 	log.info(f'环境: Python {sys.version.split()[0]} | {platform.system()} {platform.release()}')
 	log.info('=' * 70)
@@ -1103,6 +1162,15 @@ async def main():
 	# 清理遗留 Chrome 进程
 	kill_chrome()
 	await asyncio.sleep(2)
+
+	# 同步 sites.json → site_info.json（唯一执行数据源）
+	info = sync_site_info(SITES)
+	summary = info['_meta'].get('summary', {})
+	log.info(f'  site_info: {SITE_INFO_FILE} (今日: {info["_meta"]["checkin_date"]})')
+	log.info(f'  活跃站点: {summary.get("active_sites", 0)} | 跳过: {summary.get("skipped_sites", 0)} | 账号: {len(LINUXDO_ACCOUNTS)}')
+
+	# 自动补全缺失的 client_id
+	await resolve_sites(info)
 
 	# 自动检测串行模式：Linux + 内存 < 3GB
 	serial_mode = args.serial
@@ -1123,85 +1191,146 @@ async def main():
 		log.info(f'  [MODE] 串行执行')
 		for account in LINUXDO_ACCOUNTS:
 			try:
-				await process_account(account, debug_port=9222)
+				await process_account(account, info, debug_port=9222)
 			except Exception as e:
 				log.error(f'  [ERROR] 账号 {account["label"]} 异常: {e}')
 	else:
 		log.info(f'  [MODE] 并行执行 ({len(LINUXDO_ACCOUNTS)} 个 Chrome)')
 		tasks = []
 		for i, account in enumerate(LINUXDO_ACCOUNTS):
-			tasks.append(process_account(account, debug_port=9222 + i))
+			tasks.append(process_account(account, info, debug_port=9222 + i))
 		gather_results = await asyncio.gather(*tasks, return_exceptions=True)
 		for i, result in enumerate(gather_results):
 			if isinstance(result, Exception):
 				log.error(f'  [ERROR] 账号 {LINUXDO_ACCOUNTS[i]["label"]} 异常: {result}')
 
-	# 输出汇总
+	# 输出汇总（基于 site_info，包含缓存跳过的完整视图）
 	overall_ms = round((time.monotonic() - overall_start) * 1000)
+	all_labels = [a['label'] for a in LINUXDO_ACCOUNTS]
+
+	# 按站点汇总状态（从 site_info 读取，覆盖缓存+本次执行）
+	site_groups = {'success': [], 'failed': [], 'skipped': []}
+	total_tasks = total_ok = total_already = total_fail = 0
+	for site_key, site_data in info.items():
+		if site_key == '_meta' or not isinstance(site_data, dict):
+			continue
+		if site_data.get('_removed'):
+			continue
+		if site_data.get('skip'):
+			site_groups['skipped'].append((site_key, site_data))
+			continue
+		accounts = site_data.get('accounts', {})
+		acc_list = []
+		site_ok = site_already = site_fail = 0
+		for lbl in all_labels:
+			acc = accounts.get(lbl)
+			if not acc or acc.get('_excluded'):
+				continue
+			total_tasks += 1
+			st = acc.get('checkin_status', 'pending')
+			if st == 'success':
+				site_ok += 1; total_ok += 1
+				quota = acc.get('quota', '')
+				acc_list.append((lbl, 'ok', f'签到成功 (额度: {quota})'))
+			elif st == 'already_checked':
+				site_already += 1; total_already += 1
+				acc_list.append((lbl, 'ok', '今日已签到'))
+			elif st == 'failed':
+				site_fail += 1; total_fail += 1
+				acc_list.append((lbl, 'fail', acc.get('error', acc.get('checkin_msg', '失败'))))
+			else:
+				site_fail += 1; total_fail += 1
+				acc_list.append((lbl, 'fail', '未执行'))
+		entry = (site_key, site_data, acc_list, site_ok, site_already, site_fail)
+		if site_fail > 0 and site_ok + site_already == 0:
+			site_groups['failed'].append(entry)
+		elif site_fail > 0:
+			site_groups['failed'].append(entry)  # 部分失败也归到失败区
+		else:
+			site_groups['success'].append(entry)
+
 	log.info(f'\n\n{"=" * 70}')
 	log.info('汇总报告')
 	log.info(f'{"=" * 70}')
 
-	total_login_ok = sum(1 for r in results if r.get('login_ok'))
-	total_checkin_ok = sum(1 for r in results if r.get('checkin_ok'))
-	total_already = sum(1 for r in results if r.get('already_checked'))
-	total_entries = len(results)
+	# 成功区
+	ok_count = len(site_groups['success'])
+	if ok_count:
+		log.info(f'\n  [OK] 全部成功 ({ok_count} 个站点)')
+		log.info(f'  {"─" * 50}')
+		for site_key, site_data, acc_list, s_ok, s_al, s_fail in site_groups['success']:
+			name = site_data.get('name', site_key)
+			labels = ', '.join(lbl for lbl, _, _ in acc_list)
+			log.info(f'  {name} [{len(acc_list)}账号: {labels}]')
+			for lbl, _, detail in acc_list:
+				log.info(f'    {lbl}: {detail}')
 
-	# 按站点分组
-	for site_key, site_cfg in SITES.items():
-		site_name = site_cfg['name']
-		site_results = [r for r in results if r['site_key'] == site_key]
-		login_ok = sum(1 for r in site_results if r.get('login_ok'))
-		checkin_ok = sum(1 for r in site_results if r.get('checkin_ok'))
-		already = sum(1 for r in site_results if r.get('already_checked'))
-		total = len(site_results)
-		log.info(f'\n  [{site_name}] 登录: {login_ok}/{total} | 签到: {checkin_ok}/{total} | 已签: {already}/{total}')
-		for r in site_results:
-			status = ''
-			if r.get('checkin_ok'):
-				status = f'签到成功 (额度: {r.get("quota", "?")})'
-			elif r.get('already_checked'):
-				status = f'今日已签到'
-			elif r.get('login_ok'):
-				status = f'已登录, 签到: {r.get("checkin_msg", r.get("error", "失败"))}'
-			else:
-				status = f'登录失败: {r.get("error", "未知")}'
-			log.info(f'    {r["account"]}: {status}')
+	# 失败区
+	fail_count = len(site_groups['failed'])
+	if fail_count:
+		log.info(f'\n  [FAIL] 存在失败 ({fail_count} 个站点)')
+		log.info(f'  {"─" * 50}')
+		for site_key, site_data, acc_list, s_ok, s_al, s_fail in site_groups['failed']:
+			name = site_data.get('name', site_key)
+			labels = ', '.join(lbl for lbl, _, _ in acc_list)
+			log.info(f'  {name} [{len(acc_list)}账号: {labels}] 成功:{s_ok + s_al} 失败:{s_fail}')
+			for lbl, status, detail in acc_list:
+				tag = '[OK]' if status == 'ok' else '[FAIL]'
+				log.info(f'    {tag} {lbl}: {detail}')
+
+	# 跳过区
+	skip_count = len(site_groups['skipped'])
+	if skip_count:
+		log.info(f'\n  [SKIP] 跳过 ({skip_count} 个站点)')
+		log.info(f'  {"─" * 50}')
+		for site_key, site_data in site_groups['skipped']:
+			name = site_data.get('name', site_key)
+			reason = site_data.get('skip_reason', '')
+			log.info(f'  {name}: {reason}' if reason else f'  {name}')
 
 	# 统计摘要
+	total_effective = total_ok + total_already
 	log.info(f'\n{"=" * 70}')
 	log.info(f'运行统计')
 	log.info(f'{"=" * 70}')
 	log.info(f'  总耗时: {overall_ms / 1000:.1f}s')
-	log.info(f'  站点数: {len(SITES)} | 账号数: {len(LINUXDO_ACCOUNTS)} | 总任务: {total_entries}')
-	log.info(f'  登录成功: {total_login_ok}/{total_entries} ({total_login_ok * 100 // max(total_entries, 1)}%)')
-	log.info(f'  签到成功: {total_checkin_ok}/{total_entries} ({total_checkin_ok * 100 // max(total_entries, 1)}%)')
-	log.info(f'  今日已签: {total_already}/{total_entries}')
-	log.info(f'  有效成功: {total_checkin_ok + total_already}/{total_entries} ({(total_checkin_ok + total_already) * 100 // max(total_entries, 1)}%)')
+	log.info(f'  站点: 成功 {ok_count} | 失败 {fail_count} | 跳过 {skip_count}')
+	log.info(f'  任务: {total_tasks} | 签到成功: {total_ok} | 已签到: {total_already} | 失败: {total_fail}')
+	log.info(f'  有效完成: {total_effective}/{total_tasks} ({total_effective * 100 // max(total_tasks, 1)}%)')
 
 	# 按账号统计
 	log.info(f'\n  按账号:')
 	for acc in LINUXDO_ACCOUNTS:
-		acc_label = acc['label']
-		acc_results = [r for r in results if r['account'] == acc_label]
-		acc_login = sum(1 for r in acc_results if r.get('login_ok'))
-		acc_checkin = sum(1 for r in acc_results if r.get('checkin_ok'))
-		acc_already = sum(1 for r in acc_results if r.get('already_checked'))
-		acc_total = len(acc_results)
-		log.info(f'    {acc_label:12s} 登录: {acc_login:>2}/{acc_total} | 签到: {acc_checkin:>2}/{acc_total} | 已签: {acc_already:>2}/{acc_total}')
+		lbl = acc['label']
+		a_ok = a_al = a_fail = a_total = 0
+		for site_key, site_data in info.items():
+			if site_key == '_meta' or not isinstance(site_data, dict):
+				continue
+			if site_data.get('skip') or site_data.get('_removed'):
+				continue
+			a = site_data.get('accounts', {}).get(lbl)
+			if not a or a.get('_excluded'):
+				continue
+			a_total += 1
+			st = a.get('checkin_status', 'pending')
+			if st == 'success': a_ok += 1
+			elif st == 'already_checked': a_al += 1
+			else: a_fail += 1
+		log.info(f'    {lbl:12s} 成功: {a_ok:>2} | 已签: {a_al:>2} | 失败: {a_fail:>2} | 共 {a_total}')
 
 	# 失败原因汇总
 	errors = {}
-	for r in results:
-		err = r.get('error')
-		if err:
-			errors[err] = errors.get(err, 0) + 1
+	for grp in site_groups['failed']:
+		for lbl, status, detail in grp[2]:
+			if status == 'fail':
+				errors[detail] = errors.get(detail, 0) + 1
 	if errors:
 		log.info(f'\n  失败原因:')
 		for err, count in sorted(errors.items(), key=lambda x: -x[1]):
 			log.info(f'    {err}: {count} 次')
 
 	log.info(f'\n结果已保存到: {RESULTS_FILE}')
+	log.info(f'站点信息已保存到: {SITE_INFO_FILE}')
 
 
 if __name__ == '__main__':

@@ -1,6 +1,6 @@
 # 站点信息注册表
 
-> 最后更新: 2026-02-14
+> 最后更新: 2026-02-16
 > 配套技术文档: [TECHNICAL_GUIDE.md](./TECHNICAL_GUIDE.md)
 
 ---
@@ -37,7 +37,7 @@
 
 | 标记 | 含义 |
 |------|------|
-| **已配置** | 在 `multi_site_checkin.py` 中已有配置，可直接运行 |
+| 已配置 | 在 `sites.json` 中已有配置，可直接运行 |
 | **待添加** | 已探测确认可用，只需添加配置即可 |
 | **需处理** | 有 Turnstile / 未知签到 / WAF 等障碍，需额外工作 |
 | **无签到** | 站点正常但明确不支持签到功能 |
@@ -63,10 +63,10 @@ LinuxDO 论坛的用户信任等级，部分站点有最低等级要求：
 
 | 编号 | 标签 | 邮箱 | TL 等级 | 状态 | 备注 |
 |------|------|------|---------|------|------|
-| 1 | ZHnagsan | `2621097668@qq.com` | **待确认** | 正常 | 主号，24/26 站点签到成功 |
-| 2 | caijijiji | `dw2621097668@gmail.com` | **待确认** | 正常 | 23/26 站点签到成功 |
-| 3 | CaiWai | `daixiaowei985@gmail.com` | **待确认** | 正常 | 22/26 站点签到成功 |
-| 4 | heshangd | `2330702014@st.btbu.edu.cn` | **待确认** | 正常 | 22/26 站点签到成功 |
+| 1 | ZHnagsan | `2621097668@qq.com` | **待确认** | 正常 | 主号 |
+| 2 | caijijiji | `dw2621097668@gmail.com` | **待确认** | 正常 | |
+| 3 | CaiWai | `daixiaowei985@gmail.com` | **待确认** | 正常 | |
+| 4 | heshangd | `2330702014@st.btbu.edu.cn` | **待确认** | 正常 | |
 | ~~5~~ | ~~kefuka~~ | ~~`xiaoweidai998@163.com`~~ | - | **已封禁** | LinuxDO 账号被封，已从脚本移除 |
 
 > **重要**: 每个账号的 TL 等级直接决定可用站点范围。
@@ -90,42 +90,42 @@ LinuxDO 论坛的用户信任等级，部分站点有最低等级要求：
 
 | 分类 | 数量 | 说明 |
 |------|------|------|
-| 已配置 - 活跃 | 26 | 自动签到运行中 |
-| 已配置 - 跳过 | 7 | 已配置但因权限/域名等问题跳过 |
+| 已配置 - 活跃 | 27 | 自动签到运行中 |
+| 已配置 - 跳过 | 6 | 已配置但因权限/域名等问题跳过 |
 | 需特殊处理 | 5 | Turnstile / WAF |
 | 无签到功能 | 9 | 站点正常但不支持签到 |
 | 非 new-api | 12 | 不同框架，需独立方案 |
 | 死亡 | 7 | 服务器不可达（2026-02-13 二次确认） |
 | **合计** | **66** | |
 
-> **数据来源**: `checkin_results.json`（2026-02-14 运行结果）
+> **数据来源**: `site_info.json` + `checkin_results.json`（2026-02-16 运行结果）
 > **数据新鲜度**: 公益站状态变化快，建议每周运行 `probe_sites.py` 刷新
 
 ---
 
 ## 四、已配置站点（33 个）
 
-当前 `multi_site_checkin.py` 中已配置 33 个站点：26 个活跃 + 7 个跳过。
+当前 `sites.json` 中已配置 33 个站点：27 个活跃 + 6 个跳过。
 
-### 4.1 活跃站点（26 个）
+### 4.1 活跃站点（27 个）
 
 #### 全部账号签到成功（21 个）
 
 | # | 站点名 | 域名 | TL | Client ID | 状态 |
 |---|--------|------|-----|-----------|------|
-| 1 | 摸鱼公益 | `clove.cc.cd` | 1 | `Lr8C2Ny7JPr7c4YqysaDtVEqkO1a9eL7` | 4/4 成功 |
-| 2 | 老魔公益站 | `api.2020111.xyz` | 1 | `gnyvfmAfXrnYrt9ierq3Onj1ADvdVmmm` | 4/4 成功 |
-| 3 | WoW公益站 | `linuxdoapi.223384.xyz` | 0 | `3fcFoNvesssuyuFsvzBafjWivE4wvTwN` | 4/4 成功 |
+| 1 | 老魔公益站 | `api.2020111.xyz` | 1 | `gnyvfmAfXrnYrt9ierq3Onj1ADvdVmmm` | 4/4 成功 |
+| 2 | WoW公益站 | `linuxdoapi.223384.xyz` | 0 | `3fcFoNvesssuyuFsvzBafjWivE4wvTwN` | 4/4 成功 |
+| 3 | Elysiver公益站 | `elysiver.h-e.top` | ? | 运行时获取 | 4/4 成功 |
 | 4 | WONG公益站 | `wzw.pp.ua` | 1 | `451QxPCe4n9e7XrvzokzPcqPH9rUyTQF` | 4/4 成功 |
-| 5 | KFC公益站 | `kfc-api.sxxe.net` | 0 | `UZgHjwXCE3HTrsNMjjEi0d8wpcj7d4Of` | 4/4 成功 |
-| 6 | duckcoding黄鸭 | `free.duckcoding.com` | 1 | `XNJfOdoSeXkcx80mDydoheJ0nZS4tjIf` | 4/4 成功 |
-| 7 | duckcoding-jp | `jp.duckcoding.com` | 0 | `MGPwGpfcyKGHsdnsY0BMpt6VZPrkxOBd` | 4/4 成功 |
-| 8 | 小呆API-base | `api.daiju.live` | 1 | `Bl5uJRVkjxVpGC2MDw3UZdzb89RMguVa` | 4/4 成功 |
-| 9 | Embedding公益站 | `router.tumuer.me` | 1 | `L3bf5EA8RoJJObIJ2W7g1CaVAZNEqM4M` | 4/4 成功 |
-| 10 | Huan API | `ai.huan666.de` | 1 | `FNvJFnlfpfDM2mKDp8HTElASdjEwUriS` | 4/4 成功 |
-| 11 | 慕鸢公益站 | `newapi.linuxdo.edu.rs` | 1 | `rxyZeu4Wg8HNzwaG6YCj6OnFvap7ZfRU` | 4/4 成功 |
-| 12 | 佬友freestyle | `api.freestyle.cc.cd` | 1 | `yCN8PmzMMcdOpuZp8UVQh7dxywofhpc2` | 4/4 成功 |
-| 13 | New API | `openai.api-test.us.ci` | 1 | `65Lj7gYXHoSAVDDUq6Plb11thoqAV1t7` | 4/4 成功 |
+| 5 | 余额比寿命长 | `new.123nhh.xyz` | 1 | `m17Y3zburaQfwCe53fWpae8tKPCuHXcy` | 4/4 成功 |
+| 6 | HotaruAPI | `hotaruapi.com` | 1 | `qVGkHnU8fLzJVEMgHCuNUCYifUQwePWn` | 4/4 成功 |
+| 7 | KFC公益站 | `kfc-api.sxxe.net` | 0 | `UZgHjwXCE3HTrsNMjjEi0d8wpcj7d4Of` | 4/4 成功 |
+| 8 | duckcoding黄鸭 | `free.duckcoding.com` | 1 | `XNJfOdoSeXkcx80mDydoheJ0nZS4tjIf` | 4/4 成功 |
+| 9 | duckcoding-jp | `jp.duckcoding.com` | 0 | `MGPwGpfcyKGHsdnsY0BMpt6VZPrkxOBd` | 4/4 成功 |
+| 10 | 小呆API-base | `api.daiju.live` | 1 | `Bl5uJRVkjxVpGC2MDw3UZdzb89RMguVa` | 4/4 成功 |
+| 11 | Embedding公益站 | `router.tumuer.me` | 1 | `L3bf5EA8RoJJObIJ2W7g1CaVAZNEqM4M` | 4/4 成功 |
+| 12 | Huan API | `ai.huan666.de` | 1 | `FNvJFnlfpfDM2mKDp8HTElASdjEwUriS` | 4/4 成功 |
+| 13 | 慕鸢公益站 | `newapi.linuxdo.edu.rs` | 1 | `rxyZeu4Wg8HNzwaG6YCj6OnFvap7ZfRU` | 4/4 成功 |
 | 14 | NPC API | `npcodex.kiroxubei.tech` | 1 | `APUcB3LChvSGi3FmkODZx6Ij2038mkHY` | 4/4 成功 |
 | 15 | Jarvis API | `ai.ctacy.cc` | 1 | `vtdgTJlFRj6WZjCfjuNucKeNXn5rplzV` | 4/4 成功 |
 | 16 | 云端API | `cloudapi.wdyu.eu.cc` | 1 | `RLuQBBcU7LkZmed1mvqiktf2O5lhjbVv` | 4/4 成功 |
@@ -135,67 +135,68 @@ LinuxDO 论坛的用户信任等级，部分站点有最低等级要求：
 | 20 | Old API | `sakuradori.dpdns.org` | 1 | `QSRbjIGtYWCdyd0SPEiXGN4HlK4k0n7Z` | 4/4 成功 |
 | 21 | 纳米哈基米 | `free.nanohajimi.mom` | 1 | `svkUqtRyhOJMULQ1Zfnfhvv9ALSnANhf` | 4/4 成功 |
 
-#### 部分账号成功（4 个）- CF 验证不稳定
+#### 部分账号成功（3 个）- CF 验证不稳定
 
 | # | 站点名 | 域名 | TL | Client ID | ZHnagsan | caijijiji | CaiWai | heshangd | 问题 |
 |---|--------|------|-----|-----------|----------|-----------|--------|----------|------|
 | 22 | Einzieg API | `api.einzieg.site` | 1 | `aBambSqvDqCgTW8fCarJBeQji8M5RATf` | OK | OK | X | X | CF 超时 |
 | 23 | dev88公益站 | `api.dev88.tech` | **2** | `E8gcZeQkasYqaNiM2GwjUbV1ztY1owAc` | OK | OK | X | X | TL2 + CF |
 | 24 | ThatAPI | `gyapi.zxiaoruan.cn` | **2** | `doAqU5TVU6L7sXudST9MQ102aaJObESS` | OK | OK | X | X | TL2 + CF |
-| 25 | Elysiver公益站 | `elysiver.h-e.top` | ? | 运行时获取 | X | OK | OK | OK | 阿里云 WAF |
 
-> 这 4 个站点不是固定失败，是 CF/WAF 验证超时导致，下次运行可能成功。
+> 这 3 个站点不是固定失败，是 CF/WAF 验证超时导致，下次运行可能成功。
 
-#### 全部账号失败（1 个）
+#### 站点不可达（3 个）- 服务端问题
 
-| # | 站点名 | 域名 | TL | Client ID | 问题 |
-|---|--------|------|-----|-----------|------|
-| 26 | 余额比寿命长 | `new.123nhh.xyz` | 1 | `m17Y3zburaQfwCe53fWpae8tKPCuHXcy` | 登录成功但签到返回"未知"，接口可能变更 |
+| # | 站点名 | 域名 | 问题 |
+|---|--------|------|------|
+| 25 | 摸鱼公益 | `clove.cc.cd` | 站点无法连接 |
+| 26 | 佬友freestyle | `api.freestyle.cc.cd` | 站点无法连接 |
+| 27 | New API | `openai.api-test.us.ci` | 站点无法连接 |
 
-### 4.2 跳过站点（7 个）
+### 4.2 跳过站点（6 个）
 
 已配置但因权限不足、域名异常等原因标记为 `skip`：
 
 | # | 站点名 | 域名 | 跳过原因 |
 |---|--------|------|----------|
-| 1 | 莹和兰 | `api.hotaruapi.top` | OAuth 返回权限不足 |
-| 2 | uibers | `www.uibers.com` | OAuth 返回权限不足 |
-| 3 | 小呆API | `new.184772.xyz` | OAuth 返回权限不足 |
-| 4 | MTU公益 | `jiuuij.de5.net` | OAuth 返回权限不足（需 TL2） |
-| 5 | 略貌取神 | `lmq.kangnaixi.xyz` | OAuth 返回权限不足 |
-| 6 | 六哥API | `api.crisxie.top` | OAuth 返回权限不足（需 TL2） |
-| 7 | 不知名公益站 | `api.agentify.top` | OAuth 返回权限不足 |
+| 1 | uibers | `www.uibers.com` | OAuth 始终失败，原因未知 |
+| 2 | 小呆API | `new.184772.xyz` | 重定向到 api.daiju.live，与 xiaodai_base 重复 |
+| 3 | MTU公益 | `jiuuij.de5.net` | 需 TL2，所有账号均不满足 |
+| 4 | 略貌取神 | `lmq.kangnaixi.xyz` | 签到返回「权限不足」，多账号均不满足 TL 要求 |
+| 5 | 六哥API | `api.crisxie.top` | 需 TL2，签到返回「权限不足」 |
+| 6 | 不知名公益站 | `api.agentify.top` | 签到返回「权限不足」 |
 
 > 这些站点可能需要更高的 TL 等级，或站点管理员限制了 OAuth 注册。
 
-### 4.3 最近运行结果（2026-02-14）
+### 4.3 最近运行结果（2026-02-16）
 
-> 数据来源: `checkin_results.json` | 运行模式: 4 账号并行 + Session 缓存
+> 数据来源: `site_info.json` + `checkin_results.json` | 运行模式: 4 账号并行 + Session 缓存
 
 | 指标 | 值 |
 |------|-----|
-| 总耗时 | 437s（7.3 分钟） |
-| 活跃站点 | 26 个 |
+| 总耗时 | 189s（3.2 分钟） |
+| 活跃站点 | 27 个 |
 | 全部成功 | 21 个站点（4/4 账号） |
-| 部分成功 | 4 个站点（CF 不稳定） |
-| 全部失败 | 1 个站点（余额比寿命长） |
-| 缓存命中 | 91/104 站点通过 httpx 直连完成 |
+| 部分成功 | 3 个站点（CF 不稳定） |
+| 站点不可达 | 3 个站点 |
+| 有效完成 | 90/108 (83%) |
 
 ---
 
 ## 五、待添加站点
 
 原有 23 个待添加站点已全部配置到 `multi_site_checkin.py` 中。
-当前无待添加站点。如需添加新站点，运行 `probe_sites.py` 探测后参考以下格式：
+当前无待添加站点。如需添加新站点，运行 `probe_sites.py` 探测后在 `sites.json` 中添加：
 
-```python
-'site_key': {
-    'name': '站点名称',
-    'domain': 'https://example.com',
-    'client_id': 'xxx',  # 从 /api/status 获取，或设为 None 运行时获取
-    'checkin_path': '/api/user/checkin',
-},
+```json
+"site_key": {
+    "domain": "https://example.com",
+    "name": "站点名称",
+    "client_id": "xxx"
+}
 ```
+
+> `domain` 必填，`name`/`client_id` 可选（运行时自动获取）。运行脚本时 `sync_site_info()` 自动检测新站点。
 
 ---
 
@@ -306,6 +307,7 @@ Turnstile 是 Cloudflare 的人机验证，签到时可能需要额外处理。
 | 5 | 佬友API | `lyclaude.site` | DNS/连接失败 | 全路径连接失败 |
 | 6 | 太子公益API | `taizi.api.51yp.de5.net` | SSL 故障 | SSL handshake failure |
 | 7 | FKAI公益站 | `orchids.fuckai.me` | 服务器宕机 | 522 Connection timed out |
+| 8 | 莹和兰(旧) | `api.hotaruapi.top` | 域名迁移 | 403 Forbidden，新域名 hotaruapi.com 已在活跃站点 |
 
 > 公益站随时可能恢复或永久关闭。建议每周运行一次 `probe_sites.py` 复查。
 
@@ -313,15 +315,17 @@ Turnstile 是 Cloudflare 的人机验证，签到时可能需要额外处理。
 
 ## 十、账号-站点注册映射
 
-> 数据来源: `checkin_results.json`（2026-02-14 运行结果）
-> "Y" = 登录+签到成功, "~" = 登录成功但签到异常, "X" = OAuth 失败, "S" = 跳过
+> 数据来源: `site_info.json`（2026-02-16 运行结果）
+> "Y" = 登录+签到成功, "~" = 登录成功但签到异常, "X" = OAuth 失败, "D" = 站点不可达, "S" = 跳过
 
 | 站点 | ZHnagsan | caijijiji | CaiWai | heshangd |
 |------|:--------:|:---------:|:------:|:--------:|
-| 摸鱼公益 | Y | Y | Y | Y |
 | 老魔公益站 | Y | Y | Y | Y |
 | WoW公益站 | Y | Y | Y | Y |
+| Elysiver公益站 | Y | Y | Y | Y |
 | WONG公益站 | Y | Y | Y | Y |
+| 余额比寿命长 | Y | Y | Y | Y |
+| HotaruAPI | Y | Y | Y | Y |
 | KFC公益站 | Y | Y | Y | Y |
 | duckcoding黄鸭 | Y | Y | Y | Y |
 | duckcoding-jp | Y | Y | Y | Y |
@@ -329,8 +333,6 @@ Turnstile 是 Cloudflare 的人机验证，签到时可能需要额外处理。
 | Embedding公益站 | Y | Y | Y | Y |
 | Huan API | Y | Y | Y | Y |
 | 慕鸢公益站 | Y | Y | Y | Y |
-| 佬友freestyle | Y | Y | Y | Y |
-| New API | Y | Y | Y | Y |
 | NPC API | Y | Y | Y | Y |
 | Jarvis API | Y | Y | Y | Y |
 | 云端API | Y | Y | Y | Y |
@@ -342,9 +344,9 @@ Turnstile 是 Cloudflare 的人机验证，签到时可能需要额外处理。
 | Einzieg API | Y | Y | X | X |
 | dev88公益站 | Y | Y | X | X |
 | ThatAPI | Y | Y | X | X |
-| Elysiver公益站 | X | Y | Y | Y |
-| 余额比寿命长 | ~ | ~ | ~ | ~ |
-| 莹和兰 | S | S | S | S |
+| 摸鱼公益 | D | D | D | D |
+| 佬友freestyle | D | D | D | D |
+| New API | D | D | D | D |
 | uibers | S | S | S | S |
 | 小呆API | S | S | S | S |
 | MTU公益 | S | S | S | S |
@@ -406,11 +408,13 @@ Turnstile 是 Cloudflare 的人机验证，签到时可能需要额外处理。
 
 | 问题 | 说明 | 解决方案 |
 |------|------|----------|
-| 26 站点 x 4 账号 = 104 签到任务 | 串行执行耗时 96 分钟 | 已实现：Session 缓存 + httpx 直连（30s 完成缓存命中站点） |
-| 多账号排队等待 | 4 账号串行，每个 20+ 分钟 | 已实现：asyncio.gather 并行，4 账号同时执行 |
-| Chrome 内存占用 | 长时间运行 Chrome 可能泄漏 | 每账号独立 Chrome 实例（端口 9222-9225），运行后自动关闭 |
+| 27 站点 x 4 账号 = 108 签到任务 | 串行执行耗时 96 分钟 | 已实现：Session 缓存 + httpx 直连（30s 完成缓存命中站点） |
+| 多账号排队等待 | 4 账号串行，每个 20+ 分钟 | Windows：asyncio.gather 并行，4 账号同时执行（端口 9222-9225） |
+| Linux 服务器内存不足 | 多 Chrome 实例 OOM | 已实现：自动检测内存 < 3GB 切换串行模式（单 Chrome，端口 9222），或 `--serial` 手动指定 |
+| Linux 环境适配 | Chrome 路径/headless/进程管理 | 已实现：`shutil.which` 自动检测路径，headless + `--no-sandbox`，`pkill` 替代 `taskkill` |
+| Chrome 内存占用 | 长时间运行 Chrome 可能泄漏 | 每账号独立 Chrome 实例（临时 profile），运行后自动关闭 |
 | 站点宕机导致超时阻塞 | 死站超时 10-20s | skip 标记机制 + OAuth 超时 78s 自动跳过 |
-| Session 文件并发写入 | 并行账号同时写 sessions_cache.json | load-merge-save 原子模式（asyncio 单线程安全） |
+| Session 文件并发写入 | 并行账号同时写 site_info.json | save_site_info() 原子模式（asyncio 单线程安全） |
 
 ---
 
@@ -419,48 +423,56 @@ Turnstile 是 Cloudflare 的人机验证，签到时可能需要额外处理。
 ### 12.1 环境准备
 
 ```bash
-# 必须安装
+# Windows
 pip install httpx playwright
 playwright install chromium
+# 确认 Chrome 路径: C:\Program Files\Google\Chrome\Application\chrome.exe
 
-# multi_site_checkin.py 需要本机 Chrome
-# 确认路径: C:\Program Files\Google\Chrome\Application\chrome.exe
+# Linux（阿里云等服务器）
+pip install httpx playwright
+sudo dnf install -y chromium        # CentOS/RHEL/Alibaba Cloud Linux
+# 或 sudo apt install -y chromium-browser  # Ubuntu/Debian
 ```
 
 ### 12.2 日常签到
 
 ```bash
-# 运行多站点签到（26 个活跃站点 x 4 个账号）
+# 运行多站点签到（27 个活跃站点 x 4 个账号）
 python multi_site_checkin.py
+
+# Linux 服务器：内存 < 3GB 自动串行，也可手动指定
+python multi_site_checkin.py --serial
 
 # 执行流程:
 # Phase 1: httpx 直连（用缓存 session，~30s 完成大部分站点）
 # Phase 2: 浏览器 OAuth（仅处理无缓存/缓存过期的站点）
 #
-# 首次运行: ~22 分钟（无缓存，全部走 OAuth）
-# 后续运行: ~7 分钟（大部分走缓存，少量 OAuth）
-# 缓存全命中: ~1-2 分钟
+# Windows 并行模式:
+#   首次运行: ~22 分钟 | 日常: ~7 分钟 | 缓存全命中: ~1-2 分钟
+# Linux 串行模式:
+#   日常: ~10 分钟 | 缓存全命中: ~2-3 分钟
 #
 # 输出文件:
 # - checkin_results.json  签到结果
-# - sessions_cache.json   Session 缓存（自动维护）
+# - site_info.json        Session 缓存 + 运行数据（自动维护）
 # - logs/checkin_*.log    详细日志
 ```
 
 ### 12.3 添加新站点
 
-在 `multi_site_checkin.py` 的 `SITES` 字典中追加：
+在 `sites.json` 中追加：
 
-```python
-'site_key': {                              # 简短英文 key
-    'name': '站点中文名',                    # 显示名称
-    'domain': 'https://域名',               # 站点域名
-    'client_id': 'xxx',                     # 从 /api/status 获取，或设为 None 运行时获取
-    'checkin_path': '/api/user/checkin',    # 所有 new-api 站点统一
-},
+```json
+"site_key": {
+    "domain": "https://域名",
+    "name": "站点中文名",
+    "client_id": "xxx"
+}
 ```
 
-> 如需跳过某站点，添加 `'skip': True`。
+> `domain` 必填，`name`/`client_id` 可选（运行时自动获取）。
+> 如需跳过某站点，添加 `"skip": true, "skip_reason": "原因"`。
+> 如需限制账号，添加 `"accounts": ["ZHnagsan", "caijijiji"]`。
 
 ### 12.4 探测站点状态
 
@@ -513,6 +525,7 @@ python probe_sites.py
 | GGBOOM公益站 | ai.qaq.al | 八.3 |
 | GGBOOM签到站 | sign.qaq.al | 八.1 |
 | Huan API | ai.huan666.de | 四.1 |
+| HotaruAPI | hotaruapi.com | 四.1 |
 | ibsgss公益站 | codex.ibsgss.uk | 四.1 |
 | ICAT公益站 | icat.pp.ua | 九 |
 | Jarvis API | ai.ctacy.cc | 四.1 |
@@ -558,7 +571,7 @@ python probe_sites.py
 | 熊猫API | api520.pro | 八.2 |
 | 纳米哈基米 | free.nanohajimi.mom | 四.1 |
 | 老魔公益站 | api.2020111.xyz | 四.1 |
-| 莹和兰 | api.hotaruapi.top | 四.2 (跳过) |
+| 莹和兰 | api.hotaruapi.top | 九 (域名已迁移) |
 | 薄荷API | x666.me | 七 |
 | 随时跑路福利站 | fuli.hxi.me | 八.1 |
 | 云端API | cloudapi.wdyu.eu.cc | 四.1 |
