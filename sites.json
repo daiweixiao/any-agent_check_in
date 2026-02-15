@@ -174,5 +174,18 @@
     "client_id": "UudCcOSQPmz3EHp2EAH5JjHo6jMcVoaZ",
     "skip": true,
     "skip_reason": "签到返回「权限不足」"
+  },
+  "anyrouter": {
+    "domain": "https://anyrouter.top",
+    "name": "AnyRouter",
+    "provider": "anyrouter",
+    "sign_in_path": "/api/user/sign_in",
+    "needs_waf": true
+  },
+  "agentrouter": {
+    "domain": "https://agentrouter.org",
+    "name": "AgentRouter",
+    "provider": "agentrouter",
+    "sign_in_path": "/api/user/sign_in"
   }
 }

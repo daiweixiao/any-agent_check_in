@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -102,6 +103,65 @@ def load_sites():
 
 
 SITES = load_sites()
+
+# ===================== 外部站点（AnyRouter/AgentRouter）=====================
+EXTERNAL_SESSIONS_FILE = 'update_sessions.json'
+SOLVE_WAF_JS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'solve_waf.js')
+
+
+def load_external_accounts():
+	"""加载 AnyRouter/AgentRouter 账号配置，过滤已封禁账号"""
+	if not os.path.exists(EXTERNAL_SESSIONS_FILE):
+		return []
+	try:
+		with open(EXTERNAL_SESSIONS_FILE, 'r', encoding='utf-8') as f:
+			accounts = json.load(f)
+		return [a for a in accounts if 'kefuka' not in a.get('name', '')]
+	except Exception:
+		return []
+
+
+def extract_label(name):
+	"""从 update_sessions.json 的 name 提取 label: 'linuxdo_34874_ZHnagsan_...' → 'ZHnagsan'"""
+	parts = name.split('_')
+	return parts[2] if len(parts) >= 3 else name
+
+
+def solve_waf_challenge(script_content):
+	"""用 Node.js 执行 WAF 挑战脚本，解出 acw_sc__v2 cookie"""
+	try:
+		with tempfile.NamedTemporaryFile(mode='w', suffix='.js', delete=False, encoding='utf-8') as f:
+			f.write(script_content)
+			waf_script_path = f.name
+		result = subprocess.run(['node', SOLVE_WAF_JS, waf_script_path],
+								capture_output=True, text=True, timeout=10)
+		os.unlink(waf_script_path)
+		if result.returncode == 0 and result.stdout.strip():
+			return json.loads(result.stdout.strip())
+		return None
+	except Exception:
+		return None
+
+
+def get_waf_cookies(domain):
+	"""获取阿里云 WAF cookies (acw_tc + cdn_sec_tc + acw_sc__v2)"""
+	try:
+		with httpx.Client(timeout=15.0, verify=False, follow_redirects=True) as client:
+			resp = client.get(f'{domain}/api/user/self',
+							  headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+									   'Accept': 'text/html,application/xhtml+xml'})
+			waf_cookies = dict(resp.cookies)
+			if resp.status_code == 200 and '<script>' in resp.text:
+				scripts = re.findall(r'<script[^>]*>([\s\S]*?)</script>', resp.text, re.IGNORECASE)
+				if scripts:
+					solved = solve_waf_challenge(scripts[0])
+					if solved:
+						waf_cookies.update(solved)
+					else:
+						return None
+			return waf_cookies
+	except Exception:
+		return None
 
 # ===================== LinuxDO 账号 =====================
 LINUXDO_ACCOUNTS = [
@@ -212,25 +272,36 @@ def sync_site_info(sites):
 	changes = []
 
 	for site_key, cfg in sites.items():
-		# 该站点允许哪些账号（无 accounts 字段 = 全部）
-		allowed = cfg.get('accounts', all_labels)
-		# 过滤无效 label
-		invalid = [l for l in allowed if l not in all_labels]
-		if invalid:
-			changes.append(f'  [WARN] {cfg.get("name", site_key)}: 未知账号 {invalid}')
-		allowed = [l for l in allowed if l in all_labels]
+		# provider 站点（AnyRouter/AgentRouter）：账号从 update_sessions.json 获取
+		if cfg.get('provider'):
+			ext_accounts = load_external_accounts()
+			allowed = [extract_label(a['name']) for a in ext_accounts if a.get('provider') == cfg['provider']]
+		else:
+			# 该站点允许哪些账号（无 accounts 字段 = 全部）
+			allowed = cfg.get('accounts', all_labels)
+			# 过滤无效 label
+			invalid = [l for l in allowed if l not in all_labels]
+			if invalid:
+				changes.append(f'  [WARN] {cfg.get("name", site_key)}: 未知账号 {invalid}')
+			allowed = [l for l in allowed if l in all_labels]
 
 		if site_key not in info or site_key == '_meta':
 			# === 新站点 ===
 			info[site_key] = {
 				'domain': cfg['domain'],
 				'name': cfg.get('name', site_key),
-				'client_id': cfg.get('client_id'),
-				'checkin_path': cfg.get('checkin_path', '/api/user/checkin'),
-				'alive': None, 'has_cf': None, 'has_waf': None,
-				'version': None, 'checkin_enabled': None, 'min_trust_level': None,
 				'note': cfg.get('skip_reason', ''),
 			}
+			# provider 站点不需要 new-api 字段
+			if not cfg.get('provider'):
+				info[site_key].update({
+					'client_id': cfg.get('client_id'),
+					'checkin_path': cfg.get('checkin_path', '/api/user/checkin'),
+					'alive': None, 'has_cf': None, 'has_waf': None,
+					'version': None, 'checkin_enabled': None, 'min_trust_level': None,
+				})
+			else:
+				info[site_key]['provider'] = cfg['provider']
 			if cfg.get('skip'):
 				info[site_key]['skip'] = True
 				info[site_key]['skip_reason'] = cfg.get('skip_reason', '')
@@ -333,7 +404,7 @@ async def resolve_sites(info):
 	for site_key, site_data in info.items():
 		if site_key == '_meta' or not isinstance(site_data, dict):
 			continue
-		if site_data.get('skip') or site_data.get('_removed') or site_data.get('client_id'):
+		if site_data.get('skip') or site_data.get('_removed') or site_data.get('client_id') or site_data.get('provider'):
 			continue
 
 		# httpx 获取 /api/status
@@ -853,7 +924,7 @@ def get_active_sites(info, label):
 	for site_key, site_data in info.items():
 		if site_key == '_meta' or not isinstance(site_data, dict):
 			continue
-		if site_data.get('skip') or site_data.get('_removed'):
+		if site_data.get('skip') or site_data.get('_removed') or site_data.get('provider'):
 			continue
 		accounts = site_data.get('accounts', {})
 		acc = accounts.get(label)
@@ -861,6 +932,171 @@ def get_active_sites(info, label):
 			continue
 		result.append((site_key, site_data))
 	return result
+
+
+async def process_external_sites(info, external_accounts):
+	"""处理 AnyRouter/AgentRouter 签到（httpx 直连，无需浏览器）"""
+	external_sites = {k: v for k, v in SITES.items() if v.get('provider') and not v.get('skip')}
+	if not external_sites or not external_accounts:
+		return
+
+	log.info('')
+	log.info('=' * 70)
+	log.info('[EXTERNAL] AnyRouter / AgentRouter 签到')
+	log.info('=' * 70)
+
+	for site_key, site_cfg in external_sites.items():
+		provider = site_cfg['provider']
+		domain = site_cfg['domain']
+		sign_in_path = site_cfg.get('sign_in_path', '/api/user/sign_in')
+		needs_waf = site_cfg.get('needs_waf', False)
+		site_name = site_cfg.get('name', site_key)
+
+		# 筛选该 provider 的账号
+		site_accounts = [a for a in external_accounts if a.get('provider') == provider]
+		if not site_accounts:
+			continue
+
+		log.info(f'  ──────────────────────────────────────────────────')
+		log.info(f'  [{site_name}] {domain} ({len(site_accounts)} 个账号)')
+
+		# WAF cookies（AnyRouter 需要，所有账号共用）
+		waf_cookies = None
+		if needs_waf:
+			# 检查 Node.js 是否可用
+			if not shutil.which('node'):
+				log.warning(f'    [FAIL] Node.js 未安装，无法解析 WAF')
+				for acc in site_accounts:
+					label = extract_label(acc.get('name', ''))
+					record(label, site_key, site_name=site_name, domain=domain,
+						   login_ok=False, checkin_ok=False, error='Node.js 未安装')
+					update_account_info(info, site_key, label, checkin_status='failed',
+										checkin_msg='Node.js 未安装')
+				save_site_info(info)
+				continue
+
+			log.info(f'    [WAF] 获取 WAF cookies...')
+			waf_cookies = get_waf_cookies(domain)
+			if not waf_cookies:
+				log.warning(f'    [FAIL] WAF cookies 获取失败')
+				for acc in site_accounts:
+					label = extract_label(acc.get('name', ''))
+					record(label, site_key, site_name=site_name, domain=domain,
+						   login_ok=False, checkin_ok=False, error='WAF cookies 获取失败')
+					update_account_info(info, site_key, label, checkin_status='failed',
+										checkin_msg='WAF cookies 获取失败')
+				save_site_info(info)
+				continue
+			log.info(f'    [OK] WAF cookies 获取成功')
+
+		for acc in site_accounts:
+			name = acc.get('name', '')
+			label = extract_label(name)
+			session = acc.get('cookies', {}).get('session', '')
+			api_user = acc.get('api_user', '')
+
+			if not session or not api_user:
+				log.warning(f'    [{label}] 缺少 session 或 api_user，跳过')
+				continue
+
+			# 检查 site_info 中是否今日已完成
+			site_data = info.get(site_key, {})
+			acc_info = site_data.get('accounts', {}).get(label, {})
+			if acc_info.get('checkin_status') in ('success', 'already_checked') and acc_info.get('checkin_date') == info['_meta']['checkin_date']:
+				log.info(f'    [{label}] 今日已签到，跳过')
+				continue
+
+			all_cookies = {**(waf_cookies or {}), 'session': session}
+			headers = {
+				'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+				'Accept': 'application/json, text/plain, */*',
+				'new-api-user': api_user,
+				'Origin': domain,
+				'Referer': f'{domain}/',
+			}
+
+			try:
+				async with httpx.AsyncClient(timeout=30.0, verify=False, follow_redirects=True) as client:
+					# WAF 二次验证（AnyRouter）
+					if needs_waf:
+						resp_verify = await client.get(f'{domain}/api/user/self',
+													   headers=headers, cookies=all_cookies)
+						if '<script>' in resp_verify.text and 'arg1=' in resp_verify.text:
+							scripts = re.findall(r'<script[^>]*>([\s\S]*?)</script>', resp_verify.text, re.IGNORECASE)
+							if scripts:
+								solved = solve_waf_challenge(scripts[0])
+								if solved:
+									all_cookies.update(solved)
+									all_cookies.update(dict(resp_verify.cookies))
+
+					# 验证 session
+					resp = await client.get(f'{domain}/api/user/self',
+											headers=headers, cookies=all_cookies)
+					try:
+						user_data = resp.json()
+					except Exception:
+						log.warning(f'    [{label}] Session 无效（非 JSON 响应）')
+						record(label, site_key, site_name=site_name, domain=domain,
+							   login_ok=False, checkin_ok=False, error='Session 无效')
+						update_account_info(info, site_key, label, checkin_status='failed',
+											checkin_msg='Session 无效')
+						save_site_info(info)
+						continue
+
+					if not user_data.get('success'):
+						msg = user_data.get('message', 'Session 过期')
+						log.warning(f'    [{label}] {msg}')
+						record(label, site_key, site_name=site_name, domain=domain,
+							   login_ok=False, checkin_ok=False, error=msg)
+						update_account_info(info, site_key, label, checkin_status='failed',
+											checkin_msg=msg)
+						save_site_info(info)
+						continue
+
+					# 签到
+					checkin_headers = {**headers, 'Content-Type': 'application/json',
+									   'X-Requested-With': 'XMLHttpRequest'}
+					resp_checkin = await client.post(f'{domain}{sign_in_path}',
+													 headers=checkin_headers, cookies=all_cookies)
+					try:
+						result_data = resp_checkin.json()
+					except Exception:
+						log.warning(f'    [{label}] 签到响应异常')
+						record(label, site_key, site_name=site_name, domain=domain,
+							   login_ok=True, checkin_ok=False, error='签到响应异常')
+						update_account_info(info, site_key, label, checkin_status='failed',
+											checkin_msg='签到响应异常')
+						save_site_info(info)
+						continue
+
+					msg = result_data.get('msg', result_data.get('message', ''))
+					if result_data.get('ret') == 1 or result_data.get('code') == 0 or result_data.get('success'):
+						log.info(f'    [{label}] 签到成功! {msg}')
+						record(label, site_key, site_name=site_name, domain=domain,
+							   login_ok=True, checkin_ok=True, checkin_msg=msg)
+						update_account_info(info, site_key, label, checkin_status='success',
+											checkin_msg=msg, checkin_date=info['_meta']['checkin_date'])
+					elif '已' in msg or 'already' in msg.lower():
+						log.info(f'    [{label}] 今日已签到')
+						record(label, site_key, site_name=site_name, domain=domain,
+							   login_ok=True, checkin_ok=True, checkin_msg='今日已签到')
+						update_account_info(info, site_key, label, checkin_status='already_checked',
+											checkin_msg='今日已签到', checkin_date=info['_meta']['checkin_date'])
+					else:
+						log.warning(f'    [{label}] 签到失败: {msg}')
+						record(label, site_key, site_name=site_name, domain=domain,
+							   login_ok=True, checkin_ok=False, error=msg)
+						update_account_info(info, site_key, label, checkin_status='failed',
+											checkin_msg=msg)
+					save_site_info(info)
+
+			except Exception as e:
+				log.error(f'    [{label}] 异常: {e}')
+				record(label, site_key, site_name=site_name, domain=domain,
+					   login_ok=False, checkin_ok=False, error=str(e))
+				update_account_info(info, site_key, label, checkin_status='failed',
+									checkin_msg=str(e))
+				save_site_info(info)
 
 
 async def process_account(account, info, debug_port=9222):
@@ -1171,6 +1407,11 @@ async def main():
 
 	# 自动补全缺失的 client_id
 	await resolve_sites(info)
+
+	# Phase 0: AnyRouter/AgentRouter 签到（httpx 直连，无需浏览器）
+	external_accounts = load_external_accounts()
+	if external_accounts:
+		await process_external_sites(info, external_accounts)
 
 	# 自动检测串行模式：Linux + 内存 < 3GB
 	serial_mode = args.serial
