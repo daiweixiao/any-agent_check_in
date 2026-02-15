@@ -7,6 +7,7 @@
 - logging 模块双输出（控制台 + 日志文件）
 """
 
+import argparse
 import asyncio
 import json
 import logging
@@ -24,7 +25,21 @@ from urllib.parse import quote
 
 import httpx
 
-CHROME_EXE = r'C:\Program Files\Google\Chrome\Application\chrome.exe'
+IS_LINUX = platform.system() == 'Linux'
+
+
+def detect_chrome():
+	"""自动检测 Chrome/Chromium 路径"""
+	if not IS_LINUX:
+		return r'C:\Program Files\Google\Chrome\Application\chrome.exe'
+	for name in ['google-chrome', 'google-chrome-stable', 'chromium-browser', 'chromium']:
+		path = shutil.which(name)
+		if path:
+			return path
+	return 'google-chrome'
+
+
+CHROME_EXE = detect_chrome()
 DEBUG_PORT = 9222
 OAUTH_AUTHORIZE_URL = 'https://connect.linux.do/oauth2/authorize'
 RESULTS_FILE = 'checkin_results.json'
@@ -288,8 +303,11 @@ results = []  # [{account, site, login_ok, checkin_ok, checkin_msg, session, err
 
 
 def kill_chrome():
-	subprocess.run(['taskkill', '/F', '/IM', 'chrome.exe', '/T'],
-				   capture_output=True, encoding='gbk', errors='ignore')
+	if IS_LINUX:
+		subprocess.run(['pkill', '-f', 'chrome'], capture_output=True)
+	else:
+		subprocess.run(['taskkill', '/F', '/IM', 'chrome.exe', '/T'],
+					   capture_output=True, encoding='gbk', errors='ignore')
 
 
 def record(account_label, site_key, **kwargs):
@@ -882,11 +900,17 @@ async def process_account(account, debug_port=9222):
 
 	# === Phase 2: 浏览器 OAuth ===
 	tmpdir = tempfile.mkdtemp(prefix=f'chrome_{label}_')
-	proc = subprocess.Popen(
-		[CHROME_EXE, f'--remote-debugging-port={debug_port}', f'--user-data-dir={tmpdir}',
-		 '--no-first-run', '--no-default-browser-check', 'about:blank'],
-		stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-	)
+	chrome_args = [
+		CHROME_EXE, f'--remote-debugging-port={debug_port}', f'--user-data-dir={tmpdir}',
+		'--no-first-run', '--no-default-browser-check',
+	]
+	if IS_LINUX:
+		chrome_args += [
+			'--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
+			'--disable-blink-features=AutomationControlled', '--window-size=1920,1080',
+		]
+	chrome_args.append('about:blank')
+	proc = subprocess.Popen(chrome_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 	# 等待 CDP 就绪
 	for _ in range(10):
@@ -1051,6 +1075,11 @@ async def main():
 	log = setup_logging()
 	overall_start = time.monotonic()
 
+	# 解析命令行参数
+	parser = argparse.ArgumentParser(description='多站点自动签到')
+	parser.add_argument('--serial', action='store_true', help='串行执行（低内存服务器）')
+	args = parser.parse_args()
+
 	log.info('=' * 70)
 	log.info('多站点自动登录 + 签到')
 	active_sites = sum(1 for s in SITES.values() if not s.get('skip'))
@@ -1060,22 +1089,52 @@ async def main():
 	log.info(f'环境: Python {sys.version.split()[0]} | {platform.system()} {platform.release()}')
 	log.info('=' * 70)
 
-	if not os.path.exists(CHROME_EXE):
+	# Chrome 存在性检查
+	if IS_LINUX:
+		chrome_exists = shutil.which(CHROME_EXE) is not None or os.path.exists(CHROME_EXE)
+	else:
+		chrome_exists = os.path.exists(CHROME_EXE)
+	if not chrome_exists:
 		log.error(f'[ERROR] Chrome 未找到: {CHROME_EXE}')
+		if IS_LINUX:
+			log.error('Linux 安装: sudo dnf install -y chromium 或 sudo apt install -y chromium-browser')
 		sys.exit(1)
 
 	# 清理遗留 Chrome 进程
 	kill_chrome()
 	await asyncio.sleep(2)
 
-	# 并行处理所有账号（每个账号独立 Chrome 端口）
-	tasks = []
-	for i, account in enumerate(LINUXDO_ACCOUNTS):
-		tasks.append(process_account(account, debug_port=9222 + i))
-	gather_results = await asyncio.gather(*tasks, return_exceptions=True)
-	for i, result in enumerate(gather_results):
-		if isinstance(result, Exception):
-			log.error(f'  [ERROR] 账号 {LINUXDO_ACCOUNTS[i]["label"]} 异常: {result}')
+	# 自动检测串行模式：Linux + 内存 < 3GB
+	serial_mode = args.serial
+	if IS_LINUX and not args.serial:
+		try:
+			with open('/proc/meminfo') as f:
+				for line in f:
+					if line.startswith('MemTotal:'):
+						kb = int(line.split()[1])
+						if kb < 3 * 1024 * 1024:
+							serial_mode = True
+							log.info('  [INFO] 内存不足 3GB，自动切换串行模式')
+						break
+		except Exception:
+			pass
+
+	if serial_mode:
+		log.info(f'  [MODE] 串行执行')
+		for account in LINUXDO_ACCOUNTS:
+			try:
+				await process_account(account, debug_port=9222)
+			except Exception as e:
+				log.error(f'  [ERROR] 账号 {account["label"]} 异常: {e}')
+	else:
+		log.info(f'  [MODE] 并行执行 ({len(LINUXDO_ACCOUNTS)} 个 Chrome)')
+		tasks = []
+		for i, account in enumerate(LINUXDO_ACCOUNTS):
+			tasks.append(process_account(account, debug_port=9222 + i))
+		gather_results = await asyncio.gather(*tasks, return_exceptions=True)
+		for i, result in enumerate(gather_results):
+			if isinstance(result, Exception):
+				log.error(f'  [ERROR] 账号 {LINUXDO_ACCOUNTS[i]["label"]} 异常: {result}')
 
 	# 输出汇总
 	overall_ms = round((time.monotonic() - overall_start) * 1000)
