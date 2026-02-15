@@ -190,6 +190,8 @@
     "provider": "agentrouter",
     "sign_in_path": "/api/user/sign_in",
     "oauth_client_id": "KZUecGfhhDZMVnv8UtEdhOhf9sNOhqVX",
-    "redirect_uri": "https://agentrouter.org/oauth/linuxdo"
+    "redirect_uri": "https://agentrouter.org/oauth/linuxdo",
+    "no_auto_refresh": true,
+    "no_auto_refresh_reason": "阿里云滑动验证，无法自动化"
   }
 }

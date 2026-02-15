@@ -1146,46 +1146,43 @@ async def _ext_browser_refresh_and_checkin(failed_accounts, info):
 						log.warning(f'    [{label}] 缺少 oauth_client_id/redirect_uri')
 						continue
 
-					# 浏览器访问站点首页（建立 WAF）
-					try:
-						await page.goto(f'{domain}/', wait_until='domcontentloaded', timeout=30000)
-						await asyncio.sleep(5)
-					except Exception:
-						await asyncio.sleep(3)
-
-					# 等待 WAF/CF
-					for i in range(15):
-						await asyncio.sleep(2)
+					# 浏览器导航获取 state（让浏览器自动处理 WAF JS 挑战）
+					state = None
+					for retry in range(3):
 						try:
-							title = await page.title()
+							await page.goto(f'{domain}/api/oauth/state', wait_until='domcontentloaded', timeout=30000)
 						except Exception:
+							await asyncio.sleep(3)
 							continue
-						if not any(kw in title for kw in ['稍候', 'moment', 'Cloudflare', 'Just a', 'checking']):
-							break
+						# 等待 WAF/CF 通过
+						for i in range(20):
+							await asyncio.sleep(2)
+							try:
+								title = await page.title()
+							except Exception:
+								continue
+							if not any(kw in title for kw in ['稍候', 'moment', 'Cloudflare', 'Just a', 'checking']):
+								break
+						# 读取页面内容
+						try:
+							body = await page.evaluate("() => document.body?.innerText || ''")
+							data = json.loads(body)
+							if data.get('data'):
+								state = data['data']
+								break
+						except Exception:
+							pass
+						if retry < 2:
+							log.debug(f'    [{label}] state 获取失败(WAF?)，重试 #{retry+2}...')
+							await asyncio.sleep(5)
 
-					# 浏览器内获取 state
-					state_result = await page.evaluate("""
-						async () => {
-							try {
-								const resp = await fetch('/api/oauth/state', {
-									method: 'GET', credentials: 'same-origin',
-									headers: {'Accept': 'application/json'},
-								});
-								const data = await resp.json();
-								return {status: resp.status, state: data.data || ''};
-							} catch (e) { return {error: e.message}; }
-						}
-					""")
-
-					if not state_result or state_result.get('status') != 200 or not state_result.get('state'):
-						log.warning(f'    [{label}] 获取 state 失败: {json.dumps(state_result)}')
+					if not state:
+						log.warning(f'    [{label}] 获取 state 失败')
 						record(label, site_key, site_name=site_name, domain=domain,
 							   login_ok=False, checkin_ok=False, error='获取 OAuth state 失败')
 						update_account_info(info, site_key, label, checkin_status='failed', checkin_msg='获取 OAuth state 失败')
 						save_site_info(info)
 						continue
-
-					state = state_result['state']
 
 					# 构建 OAuth URL（用 sites.json 中的 oauth_client_id + redirect_uri）
 					encoded_redirect = redirect_uri.replace(':', '%3A').replace('/', '%2F')
@@ -1344,7 +1341,15 @@ async def process_external_sites(info, external_accounts):
 		for acc in site_accounts:
 			done = await _ext_try_checkin(acc, site_key, site_cfg, info, waf_cookies)
 			if not done:
-				failed_accounts.append((acc, site_key, site_cfg))
+				if site_cfg.get('no_auto_refresh'):
+					label = extract_label(acc.get('name', ''))
+					log.warning(f'    [{label}] Session 过期，无法自动刷新（{site_cfg.get("no_auto_refresh_reason", "需手动刷新")}）')
+					record(label, site_key, site_name=site_cfg.get('name', site_key), domain=site_cfg['domain'],
+						   login_ok=False, checkin_ok=False, error='Session 过期，需手动刷新')
+					update_account_info(info, site_key, label, checkin_status='failed', checkin_msg='Session 过期，需手动刷新')
+					save_site_info(info)
+				else:
+					failed_accounts.append((acc, site_key, site_cfg))
 
 	# === Phase 2: 浏览器 OAuth 刷新过期 session ===
 	if failed_accounts:
