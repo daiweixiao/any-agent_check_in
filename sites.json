@@ -154,6 +154,76 @@
     "name": "纳米哈基米",
     "client_id": "svkUqtRyhOJMULQ1Zfnfhvv9ALSnANhf"
   },
+  "bohe": {
+    "domain": "https://x666.me",
+    "name": "薄荷API",
+    "client_id": "4OtAotK6cp4047lgPD4kPXNhWRbRdTw3"
+  },
+  "lhyb": {
+    "domain": "https://api.lhyb.dpdns.org",
+    "name": "lhyb公益站",
+    "client_id": "oIKl9QwICthtBMXvdNxfh9ATkok8dR7i"
+  },
+  "koyeb": {
+    "domain": "https://new-api.koyeb.app",
+    "name": "Koyeb公益站",
+    "client_id": "oIKl9QwICthtBMXvdNxfh9ATkok8dR7i"
+  },
+  "runanytime": {
+    "domain": "https://runanytime.hxi.me",
+    "name": "AmazonQ2API",
+    "client_id": "AHjK9O3FfbCXKpF6VXGBC60K21yJ2fYk"
+  },
+  "wongde5": {
+    "domain": "https://wzw.de5.net",
+    "name": "WONG-de5",
+    "client_id": "451QxPCe4n9e7XrvzokzPcqPH9rUyTQF"
+  },
+  "nyxar": {
+    "domain": "https://api.nyxar.org",
+    "name": "Nyxar",
+    "client_id": "J3FchPMGNbhC1xsPPIybn2XSbb7rOcOa"
+  },
+  "slapq": {
+    "domain": "https://api.slapq.top",
+    "name": "Slapq",
+    "client_id": "1wJQoP1NtcbRQtsduJ81IMsUM1p5kgcG"
+  },
+  "zhx47": {
+    "domain": "https://newapi.zhx47.xyz",
+    "name": "zhx47",
+    "client_id": "gvlcRLQo0yVPTrd5GeOOI8LfAf7tT6hz"
+  },
+  "websee": {
+    "domain": "https://newapi.websee.top",
+    "name": "Websee",
+    "client_id": "T84bj40oLmv0nfeGtMt4DimDid2rDOCB"
+  },
+  "dx001": {
+    "domain": "https://api.dx001.ggff.net",
+    "name": "DX001",
+    "client_id": "WkF9VyuufVWPV8FnBeQUlRxlvmLqWYi4"
+  },
+  "w42shop": {
+    "domain": "https://api.42w.shop",
+    "name": "42w",
+    "client_id": "mOZflJ7ET1M4sJPhhzxUXX826AR1cbdQ"
+  },
+  "hybgzs": {
+    "domain": "https://ai.hybgzs.com",
+    "name": "黑与白公益站",
+    "client_id": "NZH9bc1ulhomlhyV11qAZhiFt1ZiZHxs"
+  },
+  "claudex": {
+    "domain": "https://code.claudex.us.ci",
+    "name": "Claudex公益站",
+    "client_id": "zC4SdcpJXMGmCHZTifp5VW9AysvNeGfC"
+  },
+  "windhub": {
+    "domain": "https://api.224442.xyz",
+    "name": "Wind Hub",
+    "client_id": "8czQqlyLJoxBhhNb7BU3Y1FxE7Mt3Q2u"
+  },
   "lmq": {
     "domain": "https://lmq.kangnaixi.xyz",
     "name": "略貌取神",
