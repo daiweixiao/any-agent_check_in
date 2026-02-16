@@ -167,7 +167,9 @@
   "koyeb": {
     "domain": "https://new-api.koyeb.app",
     "name": "Koyeb公益站",
-    "client_id": "oIKl9QwICthtBMXvdNxfh9ATkok8dR7i"
+    "client_id": "oIKl9QwICthtBMXvdNxfh9ATkok8dR7i",
+    "skip": true,
+    "skip_reason": "client_id 与 lhyb 相同，OAuth 回调跳转错误"
   },
   "runanytime": {
     "domain": "https://runanytime.hxi.me",
@@ -177,32 +179,44 @@
   "wongde5": {
     "domain": "https://wzw.de5.net",
     "name": "WONG-de5",
-    "client_id": "451QxPCe4n9e7XrvzokzPcqPH9rUyTQF"
+    "client_id": "451QxPCe4n9e7XrvzokzPcqPH9rUyTQF",
+    "skip": true,
+    "skip_reason": "client_id 与 WONG 相同，签到功能未启用"
   },
   "nyxar": {
     "domain": "https://api.nyxar.org",
     "name": "Nyxar",
-    "client_id": "J3FchPMGNbhC1xsPPIybn2XSbb7rOcOa"
+    "client_id": "J3FchPMGNbhC1xsPPIybn2XSbb7rOcOa",
+    "skip": true,
+    "skip_reason": "OAuth 始终失败"
   },
   "slapq": {
     "domain": "https://api.slapq.top",
     "name": "Slapq",
-    "client_id": "1wJQoP1NtcbRQtsduJ81IMsUM1p5kgcG"
+    "client_id": "1wJQoP1NtcbRQtsduJ81IMsUM1p5kgcG",
+    "skip": true,
+    "skip_reason": "OAuth 回调跳转到错误站点"
   },
   "zhx47": {
     "domain": "https://newapi.zhx47.xyz",
     "name": "zhx47",
-    "client_id": "gvlcRLQo0yVPTrd5GeOOI8LfAf7tT6hz"
+    "client_id": "gvlcRLQo0yVPTrd5GeOOI8LfAf7tT6hz",
+    "skip": true,
+    "skip_reason": "签到功能未启用"
   },
   "websee": {
     "domain": "https://newapi.websee.top",
     "name": "Websee",
-    "client_id": "T84bj40oLmv0nfeGtMt4DimDid2rDOCB"
+    "client_id": "T84bj40oLmv0nfeGtMt4DimDid2rDOCB",
+    "skip": true,
+    "skip_reason": "签到功能未启用"
   },
   "dx001": {
     "domain": "https://api.dx001.ggff.net",
     "name": "DX001",
-    "client_id": "WkF9VyuufVWPV8FnBeQUlRxlvmLqWYi4"
+    "client_id": "WkF9VyuufVWPV8FnBeQUlRxlvmLqWYi4",
+    "skip": true,
+    "skip_reason": "签到功能未启用"
   },
   "w42shop": {
     "domain": "https://api.42w.shop",
@@ -212,17 +226,23 @@
   "hybgzs": {
     "domain": "https://ai.hybgzs.com",
     "name": "黑与白公益站",
-    "client_id": "NZH9bc1ulhomlhyV11qAZhiFt1ZiZHxs"
+    "client_id": "NZH9bc1ulhomlhyV11qAZhiFt1ZiZHxs",
+    "skip": true,
+    "skip_reason": "权限不足"
   },
   "claudex": {
     "domain": "https://code.claudex.us.ci",
     "name": "Claudex公益站",
-    "client_id": "zC4SdcpJXMGmCHZTifp5VW9AysvNeGfC"
+    "client_id": "zC4SdcpJXMGmCHZTifp5VW9AysvNeGfC",
+    "skip": true,
+    "skip_reason": "权限不足 + SSL 连接失败"
   },
   "windhub": {
     "domain": "https://api.224442.xyz",
     "name": "Wind Hub",
-    "client_id": "8czQqlyLJoxBhhNb7BU3Y1FxE7Mt3Q2u"
+    "client_id": "8czQqlyLJoxBhhNb7BU3Y1FxE7Mt3Q2u",
+    "skip": true,
+    "skip_reason": "OAuth 始终失败"
   },
   "lmq": {
     "domain": "https://lmq.kangnaixi.xyz",
