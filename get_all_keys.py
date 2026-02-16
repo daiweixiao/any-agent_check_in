@@ -153,20 +153,23 @@ def main():
 
 	# 2. API Keys
 	md.append('\n## 2. API Keys\n')
+	md.append('| 站点 | 账号 | 名称 | 分组 | Key | 额度 | 过期 |')
+	md.append('|------|------|------|------|-----|------|------|')
 	total_keys = 0
+	seen_quota = set()  # (site_key, label) → 额度只显示一次
 	for site_key, site_cfg in sites.items():
 		if site_key not in keys_by_site:
 			continue
 		rows = keys_by_site[site_key]
 		total_keys += len(rows)
 		site_name = site_cfg.get('name', site_key)
-		domain = site_cfg['domain']
-		md.append(f'\n### {site_name}\n')
-		md.append(f'`{domain}`\n')
-		md.append('| 账号 | 名称 | 分组 | Key | 额度 | 过期 |')
-		md.append('|------|------|------|-----|------|------|')
 		for account, name, group, key, quota, expire in rows:
-			md.append(f'| {account} | {name} | {group} | `{key}` | {quota} | {expire} |')
+			pair = (site_key, account)
+			if pair not in seen_quota:
+				seen_quota.add(pair)
+				md.append(f'| {site_name} | {account} | {name} | {group} | `{key}` | {quota} | {expire} |')
+			else:
+				md.append(f'| {site_name} | {account} | {name} | {group} | `{key}` | | |')
 	md.append(f'\n共 {total_keys} 个令牌\n')
 
 	# 3. 可用模型对比
