@@ -7,7 +7,9 @@
   "moyu": {
     "domain": "https://clove.cc.cd",
     "name": "摸鱼公益",
-    "client_id": "Lr8C2Ny7JPr7c4YqysaDtVEqkO1a9eL7"
+    "client_id": "Lr8C2Ny7JPr7c4YqysaDtVEqkO1a9eL7",
+    "skip": true,
+    "skip_reason": "站点不可达（连续多次失败）"
   },
   "laomo": {
     "domain": "https://api.2020111.xyz",
@@ -100,12 +102,16 @@
   "freestyle": {
     "domain": "https://api.freestyle.cc.cd",
     "name": "佬友freestyle",
-    "client_id": "yCN8PmzMMcdOpuZp8UVQh7dxywofhpc2"
+    "client_id": "yCN8PmzMMcdOpuZp8UVQh7dxywofhpc2",
+    "skip": true,
+    "skip_reason": "站点不可达（连续多次失败）"
   },
   "newapi": {
     "domain": "https://openai.api-test.us.ci",
     "name": "New API",
-    "client_id": "65Lj7gYXHoSAVDDUq6Plb11thoqAV1t7"
+    "client_id": "65Lj7gYXHoSAVDDUq6Plb11thoqAV1t7",
+    "skip": true,
+    "skip_reason": "站点不可达（连续多次失败）"
   },
   "mtu": {
     "domain": "https://jiuuij.de5.net",
