@@ -288,14 +288,27 @@ def sync_site_info(sites):
 	- 新账号（sites.json 扩大 accounts）→ 创建 pending
 	- 已移除站点（info 有但 sites.json 没有）→ 标记 _removed
 	- 字段保护：note、探测结果（alive/has_cf/version 等）不被覆盖
-	- 跨天重置：checkin_status → pending（保留 session）
+	- 跨天重置：checkin_status → pending（保留 session），alive → None（重新检测站点可达性）
 	"""
 	info = load_site_info()
 	today = datetime.now().strftime('%Y-%m-%d')
+	last_date = info['_meta'].get('checkin_date')
 	info['_meta']['checkin_date'] = today
 	all_labels = [a['label'] for a in LINUXDO_ACCOUNTS]
 
 	changes = []
+
+	# 跨天重置 alive 状态，避免站点被永久标记为不可达
+	if last_date and last_date != today:
+		reset_count = 0
+		for site_key, site_data in info.items():
+			if site_key == '_meta' or not isinstance(site_data, dict):
+				continue
+			if site_data.get('alive') == False:
+				site_data['alive'] = None
+				reset_count += 1
+		if reset_count > 0:
+			changes.append(f'  [RESET] 跨天重置 {reset_count} 个站点的 alive 状态')
 
 	for site_key, cfg in sites.items():
 		# provider 站点（AnyRouter/AgentRouter）：账号从 update_sessions.json 获取
