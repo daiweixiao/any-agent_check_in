@@ -379,6 +379,9 @@ def sync_site_info(sites):
 							pass
 						else:
 							acc_info['checkin_status'] = 'pending'
+							# 清除上次运行的残留字段，避免报告误显示旧错误
+							for stale_key in ('error', 'checkin_msg', 'checkin_method', 'checkin_time'):
+								acc_info.pop(stale_key, None)
 
 				# 移除不再允许的账号（标记而非删除，保留历史数据）
 				for lbl in list(accounts):
@@ -412,10 +415,14 @@ def update_site_info(info, site_key, **kwargs):
 
 
 def update_account_info(info, site_key, label, **kwargs):
-	"""更新某站点某账号的信息（session, checkin_status 等）"""
+	"""更新某站点某账号的信息（session, checkin_status 等）。值为 None 的字段会被删除。"""
 	if site_key in info and 'accounts' in info[site_key]:
 		acc = info[site_key]['accounts'].setdefault(label, {})
-		acc.update(kwargs)
+		for k, v in kwargs.items():
+			if v is None:
+				acc.pop(k, None)
+			else:
+				acc[k] = v
 		if 'checkin_status' in kwargs and kwargs['checkin_status'] != 'pending':
 			acc['checkin_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 		save_site_info(info)
@@ -536,7 +543,7 @@ def handle_checkin_result(label, site_key, checkin_result, session_value, info, 
 			   session=session_value[:50], checkin_msg=msg, quota=quota)
 		update_account_info(info, site_key, label,
 			checkin_status='success', checkin_date=today,
-			checkin_method=method, checkin_msg=msg, quota=quota)
+			checkin_method=method, checkin_msg=msg, quota=quota, error=None)
 		return True
 	elif checkin_result and checkin_result.get('error'):
 		log.warning(f'    [FAIL] {checkin_result["error"]}')
@@ -544,7 +551,7 @@ def handle_checkin_result(label, site_key, checkin_result, session_value, info, 
 			   session=session_value[:50], error=checkin_result['error'])
 		update_account_info(info, site_key, label,
 			checkin_status='failed', checkin_date=today,
-			checkin_method=method, error=checkin_result['error'])
+			checkin_method=method, error=checkin_result['error'], checkin_msg=None)
 		return False
 	else:
 		msg = checkin_result.get('message', '未知') if checkin_result else '无响应'
@@ -556,14 +563,14 @@ def handle_checkin_result(label, site_key, checkin_result, session_value, info, 
 				   session=session_value[:50], checkin_msg=msg, already_checked=True)
 			update_account_info(info, site_key, label,
 				checkin_status='already_checked', checkin_date=today,
-				checkin_method=method, checkin_msg=msg)
+				checkin_method=method, checkin_msg=msg, error=None)
 		else:
 			log.info(f'    [INFO] {msg}')
 			record(label, site_key, site_name=sn, domain=dm, login_ok=True, checkin_ok=False,
 				   session=session_value[:50], checkin_msg=msg)
 			update_account_info(info, site_key, label,
 				checkin_status='failed', checkin_date=today,
-				checkin_method=method, checkin_msg=msg)
+				checkin_method=method, checkin_msg=msg, error=None)
 		return is_already
 
 
@@ -1391,7 +1398,7 @@ async def process_account(account, info, debug_port=9222):
 	for site_key, site_data in active_sites:
 		site_name = site_data.get('name', site_key)
 		domain = site_data['domain']
-		# 其他账号已发现站点挂了 → 跳过（并行共享 info）
+		# 其他账号浏览器已确认站点不可达 → 跳过
 		if site_data.get('alive') == False:
 			log.debug(f'  [{site_name}] 站点不可达，跳过')
 			record(label, site_key, site_name=site_name, domain=domain,
@@ -1426,13 +1433,7 @@ async def process_account(account, info, debug_port=9222):
 				continue
 
 			if result.get('error') and '站点无法连接' in result['error']:
-				log.warning(f'    [FAIL] {result["error"]}')
-				record(label, site_key, site_name=site_name, domain=domain,
-					login_ok=False, checkin_ok=False, error=result['error'])
-				update_account_info(info, site_key, label,
-					checkin_status='failed', checkin_date=today, error=result['error'])
-				update_site_info(info, site_key, alive=False)
-				handled_sites.add(site_key)
+				log.debug(f'    [CACHE] 站点连接失败, 降级到浏览器重试')
 				continue
 
 			if result.get('error'):
@@ -1528,6 +1529,16 @@ async def process_account(account, info, debug_port=9222):
 				if site_key in handled_sites:
 					continue
 
+				# 其他账号浏览器已确认站点不可达 → 跳过
+				if site_data.get('alive') == False:
+					log.debug(f'  [{site_name}] 浏览器确认不可达，跳过')
+					record(label, site_key, site_name=site_name, domain=domain,
+						login_ok=False, checkin_ok=False, error='站点无法连接')
+					update_account_info(info, site_key, label,
+						checkin_status='failed', checkin_date=today, error='站点无法连接')
+					handled_sites.add(site_key)
+					continue
+
 				# 今日已签到跳过（Phase 2 重检查）
 				if is_checkin_done_today(info, site_key, label):
 					log.debug(f'  [SKIP] {site_name} 今日已签到')
@@ -1569,6 +1580,7 @@ async def process_account(account, info, debug_port=9222):
 							)
 						else:
 							log.warning(f'    [FAIL] 无法获取站点配置')
+							update_site_info(info, site_key, alive=False)  # 浏览器确认不可达，其他账号跳过
 							record(label, site_key, site_name=site_name, domain=domain,
 								login_ok=False, checkin_ok=False, error='无法访问站点（WAF/CF）')
 							continue
